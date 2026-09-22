@@ -9,7 +9,7 @@ export const rabbitConnected=new Gauge({name:'sms_worker_rabbitmq_connected',hel
 export const activeJobs=new Gauge({name:'sms_worker_active_jobs',help:'Active worker jobs',registers:[registry]});
 export function startMetricsServer(port=Number(process.env.WORKER_METRICS_PORT||9101)){
  http.createServer(async (req,res)=>{
-  if(req.url==='/health'){const ok=rabbitConnected.get().values?.[0]?.value===1;res.writeHead(ok?200:503,{'content-type':'application/json'});return res.end(JSON.stringify({status:ok?'ok':'not_ready',rabbitmq:ok?'up':'down'}));}
+  if(req.url==='/health'){const ok=rabbitConnected.get().then?false:((rabbitConnected.get() as any).values?.[0]?.value===1);res.writeHead(ok?200:503,{'content-type':'application/json'});return res.end(JSON.stringify({status:ok?'ok':'not_ready',rabbitmq:ok?'up':'down'}));}
   if(req.url==='/metrics'){res.writeHead(200,{'content-type':registry.contentType});return res.end(await registry.metrics());}
   res.writeHead(404);res.end();
  }).listen(port,'0.0.0.0');
