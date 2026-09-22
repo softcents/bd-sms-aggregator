@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment: {POSTGRES_DB: sms, POSTGRES_USER: sms, POSTGRES_PASSWORD: sms}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:8-alpine
+    ports: ["6379:6379"]
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment: {RABBITMQ_DEFAULT_USER: sms, RABBITMQ_DEFAULT_PASS: sms}
+    ports: ["5672:5672","15672:15672"]
+volumes: {pgdata: {}}
