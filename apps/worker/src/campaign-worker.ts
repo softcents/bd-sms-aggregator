@@ -11,7 +11,9 @@ async function plan(batchId:string){
     if(!b){await c.query('ROLLBACK');return false}
     const rows=(await c.query(`SELECT id,phone,parts,rate,cost FROM "CampaignRecipient" WHERE "batchId"=$1 AND status='pending' ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED`,[batchId,Number(process.env.CAMPAIGN_CHUNK_SIZE||1000)])).rows;
     if(!rows.length){
-      await c.query('UPDATE "Batch" SET status=CASE WHEN status=\'queued\' THEN \'completed\' ELSE status END,"startedAt"=COALESCE("startedAt",NOW()),"completedAt"=CASE WHEN status=\'queued\' THEN NOW() ELSE "completedAt" END,"updatedAt"=NOW() WHERE id=$1',[batchId]);
+      const pending=(await c.query(`SELECT 1 FROM "CampaignRecipient" WHERE "batchId"=$1 AND status='pending' LIMIT 1`,[batchId])).rowCount;
+      const active=(await c.query(`SELECT 1 FROM "Message" WHERE "batchId"=$1 AND status IN ('queued','sending') LIMIT 1`,[batchId])).rowCount;
+      if(!pending && !active) await c.query('UPDATE "Batch" SET status=CASE WHEN status IN (\'queued\',\'processing\') THEN \'completed\' ELSE status END,"startedAt"=COALESCE("startedAt",NOW()),"completedAt"=CASE WHEN status IN (\'queued\',\'processing\') THEN NOW() ELSE "completedAt" END,"updatedAt"=NOW() WHERE id=$1',[batchId]);
       await c.query('COMMIT');return false;
     }
     await c.query('UPDATE "Batch" SET status=\'processing\',"startedAt"=COALESCE("startedAt",NOW()),"updatedAt"=NOW() WHERE id=$1 AND status=\'queued\'',[batchId]);
