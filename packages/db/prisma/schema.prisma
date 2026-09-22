@@ -1,7 +1,234 @@
 datasource db { provider = "postgresql" url = env("DATABASE_URL") }
 generator client { provider = "prisma-client-js" }
-model User { id BigInt @id @default(autoincrement()); name String; email String @unique; balance Decimal @default(0) @db.Decimal(14,4); status String @default("active"); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; batches Batch[]; messages Message[]; transactions Transaction[] }
-model Sender { id BigInt @id @default(autoincrement()); senderId String; type String?; status String @default("active"); userId BigInt?; user User? @relation(fields:[userId],references:[id]); messages Message[]; batches Batch[] }
-model Batch { id BigInt @id @default(autoincrement()); userId BigInt; senderId BigInt?; body String; status String @default("processing"); approval String?; totalRecipients Int @default(0); validCount Int @default(0); invalidCount Int @default(0); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; user User @relation(fields:[userId],references:[id]); sender Sender? @relation(fields:[senderId],references:[id]); messages Message[]; @@index([userId,createdAt]); @@index([status]) }
-model Message { id BigInt @id @default(autoincrement()); userId BigInt; batchId BigInt?; senderId BigInt?; to String; body String; status String @default("pending"); gatewayMessageId String?; cost Decimal @default(0) @db.Decimal(14,4); rate Decimal @default(0) @db.Decimal(10,4); parts Int @default(1); failedReason String?; sentAt DateTime?; deliveredAt DateTime?; nextPollAt DateTime?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; user User @relation(fields:[userId],references:[id]); batch Batch? @relation(fields:[batchId],references:[id]); sender Sender? @relation(fields:[senderId],references:[id]); @@index([userId,status]); @@index([userId,createdAt]); @@index([gatewayMessageId]) }
-model Transaction { id BigInt @id @default(autoincrement()); userId BigInt; amount Decimal @db.Decimal(14,4); direction String; balanceBefore Decimal @db.Decimal(14,4); balanceAfter Decimal @db.Decimal(14,4); description String?; createdAt DateTime @default(now()); user User @relation(fields:[userId],references:[id]); @@index([userId,createdAt]) }
+
+enum UserStatus { active suspended pending disabled }
+enum MessageStatus { pending queued sent delivered failed }
+enum TransactionDirection { debit credit }
+
+model User {
+  id BigInt @id @default(autoincrement())
+  name String
+  email String @unique
+  passwordHash String?
+  role String @default("customer")
+  status UserStatus @default(active)
+  balance Decimal @default(0) @db.Decimal(18,6)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  senders Sender[]
+  batches Batch[]
+  messages Message[]
+  transactions Transaction[]
+  apiKeys ApiKey[]
+  tariffAssignments TariffPlanAssignment[]
+  deposits Deposit[]
+  @@index([status])
+}
+
+model ApiKey {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  name String
+  keyHash String @unique
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+  @@index([userId,enabled])
+}
+
+model Sender {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  senderId String
+  type String?
+  status String @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id])
+  messages Message[]
+  batches Batch[]
+  @@unique([userId,senderId])
+  @@index([status])
+}
+
+model Operator {
+  id BigInt @id @default(autoincrement())
+  code String @unique
+  name String
+  countryCode String @default("880")
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  rates TariffRate[]
+  @@index([enabled])
+}
+
+model TariffPlan {
+  id BigInt @id @default(autoincrement())
+  name String
+  code String @unique
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  rates TariffRate[]
+  assignments TariffPlanAssignment[]
+}
+
+model TariffPlanAssignment {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  tariffPlanId BigInt
+  effectiveFrom DateTime @default(now())
+  user User @relation(fields:[userId],references:[id])
+  tariffPlan TariffPlan @relation(fields:[tariffPlanId],references:[id])
+  @@unique([userId,tariffPlanId])
+}
+
+model TariffRate {
+  id BigInt @id @default(autoincrement())
+  tariffPlanId BigInt
+  operatorId BigInt
+  maskingPrice Decimal @db.Decimal(18,6)
+  nonMaskingPrice Decimal @db.Decimal(18,6)
+  effectiveFrom DateTime @default(now())
+  notes String?
+  tariffPlan TariffPlan @relation(fields:[tariffPlanId],references:[id])
+  operator Operator @relation(fields:[operatorId],references:[id])
+  @@unique([tariffPlanId,operatorId])
+  @@index([operatorId,effectiveFrom])
+}
+
+model RoutePlan {
+  id BigInt @id @default(autoincrement())
+  name String
+  code String @unique
+  trafficType String?
+  isDefault Boolean @default(false)
+  enabled Boolean @default(true)
+  failoverStrategy String @default("sequential")
+  gateways RoutePlanGateway[]
+  rules RouteRule[]
+}
+
+model Gateway {
+  id BigInt @id @default(autoincrement())
+  name String
+  driver String @default("infozillion")
+  credentials Json?
+  config Json?
+  enabled Boolean @default(true)
+  priority Int @default(100)
+  timeoutSeconds Int @default(10)
+  createdAt DateTime @default(now())
+  routes RoutePlanGateway[]
+  messages Message[]
+  @@index([driver,enabled])
+}
+
+model RoutePlanGateway {
+  id BigInt @id @default(autoincrement())
+  routePlanId BigInt
+  gatewayId BigInt
+  priority Int @default(1)
+  weight Int @default(1)
+  active Boolean @default(true)
+  routePlan RoutePlan @relation(fields:[routePlanId],references:[id],onDelete:Cascade)
+  gateway Gateway @relation(fields:[gatewayId],references:[id],onDelete:Cascade)
+  @@unique([routePlanId,gatewayId])
+  @@index([routePlanId,priority])
+}
+
+model RouteRule {
+  id BigInt @id @default(autoincrement())
+  name String
+  routePlanId BigInt
+  operatorId BigInt?
+  countryCode String?
+  senderId BigInt?
+  trafficType String?
+  priority Int @default(100)
+  enabled Boolean @default(true)
+  routePlan RoutePlan @relation(fields:[routePlanId],references:[id],onDelete:Cascade)
+  @@index([enabled,priority])
+}
+
+model Batch {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  senderId BigInt?
+  body String
+  status String @default("processing")
+  approval String?
+  totalRecipients Int @default(0)
+  validCount Int @default(0)
+  invalidCount Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id])
+  sender Sender? @relation(fields:[senderId],references:[id])
+  messages Message[]
+  @@index([userId,createdAt])
+  @@index([status])
+}
+
+model Message {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  batchId BigInt?
+  senderId BigInt?
+  gatewayId BigInt?
+  to String
+  body String
+  status MessageStatus @default(pending)
+  source String?
+  gatewayMessageId String?
+  cost Decimal @default(0) @db.Decimal(18,6)
+  rate Decimal @default(0) @db.Decimal(18,6)
+  gatewayCost Decimal? @db.Decimal(18,6)
+  operatorCost Decimal? @db.Decimal(18,6)
+  parts Int @default(1)
+  isUnicode Boolean @default(false)
+  failedReason String?
+  pollAttempt Int @default(0)
+  sentAt DateTime?
+  failedAt DateTime?
+  deliveredAt DateTime?
+  nextPollAt DateTime?
+  infozillionReport Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id])
+  batch Batch? @relation(fields:[batchId],references:[id])
+  sender Sender? @relation(fields:[senderId],references:[id])
+  gateway Gateway? @relation(fields:[gatewayId],references:[id])
+  @@index([userId,status,createdAt])
+  @@index([gatewayMessageId])
+  @@index([nextPollAt])
+  @@index([to])
+}
+
+model Transaction {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  amount Decimal @db.Decimal(18,6)
+  direction TransactionDirection
+  balanceBefore Decimal @db.Decimal(18,6)
+  balanceAfter Decimal @db.Decimal(18,6)
+  description String?
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id])
+  @@index([userId,createdAt])
+}
+
+model Deposit {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  amount Decimal @db.Decimal(18,6)
+  status String @default("pending")
+  reference String?
+  provider String?
+  metadata Json?
+  createdAt DateTime @default(now())
+  user User @relation(fields:[userId],references:[id])
+  @@index([userId,status])
+}
