@@ -65,6 +65,17 @@ services:
       timeout: 5s
       retries: 10
 
+  sms-planner:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    command: ["node","apps/worker/dist/sms-planner.js"]
+
   importer:
     build:
       context: .
