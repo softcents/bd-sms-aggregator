@@ -29,7 +29,7 @@ export class CampaignService{
    let recipients:string[]=(Array.isArray(b.recipients)?b.recipients:[]).map(norm);
    if(Array.isArray(b.groupIds)&&b.groupIds.length){const q=await this.db.pool.query('SELECT DISTINCT c.phone FROM "Contact" c JOIN "ContactGroupMember" gm ON gm."contactId"=c.id JOIN "ContactGroup" g ON g.id=gm."groupId" WHERE c."userId"=$1 AND g."userId"=$1 AND g.id=ANY($2::bigint[])',[uid,b.groupIds.map(String)]);recipients.push(...q.rows.map(x=>x.phone))}
    recipients=[...new Set(recipients.filter(x=>x.length>=11))];if(!recipients.length)throw new BadRequestException('No recipients');
-   const unicode=b.isUnicode??/[^\\x00-\\x7F]/.test(body);const p=parts(body,unicode);
+   const unicode=b.isUnicode??/[^\\x00-\\x7F]/.test(body);const p=parts(body,unicode);const scheduledAt=b.scheduledAt?new Date(b.scheduledAt):new Date();if(Number.isNaN(scheduledAt.getTime()))throw new BadRequestException('Invalid scheduledAt');
    const c=await this.db.pool.connect();const ext=crypto.randomUUID();
    try{await c.query('BEGIN');const s=await c.query('SELECT id,"senderId",type,"billMsisdn" FROM "Sender" WHERE "userId"=$1 AND "senderId"=$2 AND status=\'active\'',[uid,senderId]);if(!s.rowCount)throw new BadRequestException('Sender not found');
    const batch=await c.query('INSERT INTO "Batch" ("externalId","userId","senderId",body,status,"totalRecipients","validCount","createdAt","updatedAt") VALUES ($1,$2,$3,$4,\'queued\',$5,$5,NOW(),NOW()) RETURNING id',[ext,uid,s.rows[0].id,body,recipients.length]);
