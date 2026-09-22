@@ -15,8 +15,15 @@ export class ReportsService {
     if(!q.rowCount)throw new NotFoundException('Batch not found');
     return q.rows[0];
   }
-  async messages(userId:string,limit=50){
-    const q=await this.db.pool.query('SELECT "externalId",to,status,cost,parts,"gatewayMessageId","sentAt","deliveredAt","failedReason","createdAt" FROM "Message" WHERE "userId"=$1 ORDER BY "createdAt" DESC LIMIT $2',[userId,Math.min(limit,200)]);
-    return q.rows;
+  async messages(userId:string,limit=50,offset=0,status?:string){
+    const lim=Math.min(Math.max(limit,1),500), off=Math.max(offset,0);
+    const params:any[]=[userId]; let where='WHERE "userId"=$1';
+    if(status){params.push(status);where+=' AND status=
+}+params.length;}
+    params.push(lim,off);
+    const q=await this.db.pool.query('SELECT "externalId",to,status,cost,parts,"gatewayMessageId","sentAt","deliveredAt","failedReason","createdAt" FROM "Message" '+where+' ORDER BY "createdAt" DESC LIMIT 
+}+(params.length-1)+' OFFSET 
+}+params.length,params);
+    return {data:q.rows,limit:lim,offset:off,count:q.rowCount};
   }
 }
