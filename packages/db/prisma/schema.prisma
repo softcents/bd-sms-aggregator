@@ -212,6 +212,7 @@ model Batch {
   @@index([userId,createdAt])
   @@index([status])
   campaignRecipients CampaignRecipient[]
+  smsRecipients SmsRecipient[]
 }
 
 model Message {
@@ -362,6 +363,23 @@ model CampaignRecipient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   batch Batch @relation(fields:[batchId],references:[id])
+  @@unique([batchId,phone])
+  @@index([batchId,status,id])
+}
+
+model SmsRecipient {
+  id BigInt @id @default(autoincrement())
+  batchId BigInt
+  phone String
+  operatorId BigInt?
+  rate Decimal? @db.Decimal(18,6)
+  cost Decimal? @db.Decimal(18,6)
+  parts Int @default(1)
+  status String @default("pending")
+  messageId BigInt?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  batch Batch @relation(fields:[batchId],references:[id],onDelete:Cascade)
   @@unique([batchId,phone])
   @@index([batchId,status,id])
 }
