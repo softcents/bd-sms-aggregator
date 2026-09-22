@@ -28,6 +28,7 @@ model User {
 
 model ApiKey {
   id BigInt @id @default(autoincrement())
+  externalId String @unique
   userId BigInt
   name String
   keyHash String @unique
@@ -164,6 +165,21 @@ model RouteRule {
   enabled Boolean @default(true)
   routePlan RoutePlan @relation(fields:[routePlanId],references:[id],onDelete:Cascade)
   @@index([enabled,priority])
+}
+
+model OutboxEvent {
+  id BigInt @id @default(autoincrement())
+  aggregateType String
+  aggregateId String
+  eventType String
+  payload Json
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  publishedAt DateTime?
+  lockedAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  @@index([publishedAt,availableAt])
 }
 
 model Batch {
