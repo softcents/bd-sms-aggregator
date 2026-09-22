@@ -34,6 +34,8 @@ model ApiKey {
   lastUsedAt DateTime?
   expiresAt DateTime?
   enabled Boolean @default(true)
+  allowedIps String[] @default([])
+  lastIp String?
   createdAt DateTime @default(now())
   user User @relation(fields:[userId],references:[id],onDelete:Restrict)
   @@index([userId,enabled])
