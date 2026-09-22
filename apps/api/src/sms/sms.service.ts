@@ -67,7 +67,7 @@ export class SmsService {
       total=total.add(cost);staged.push([to,String(op.id),String(unit),cost.toFixed(6),messageParts]);
     }
     const before=new Decimal(String(u.rows[0].balance));if(before.lt(total))throw new BadRequestException('Insufficient balance');
-    const batch=(await c.query('INSERT INTO "Batch" ("externalId","userId","senderId",body,status,"totalRecipients","validCount","createdAt","updatedAt","idempotencyKey") VALUES ($1,$2,$3,$4,\'planning\',$5,$5,NOW(),NOW()) RETURNING id',[batchExternal,userIdBigInt.toString(),sender.id,dto.body,staged.length])).rows[0];
+    const batch=(await c.query('INSERT INTO "Batch" ("externalId","userId","senderId",body,status,"totalRecipients","validCount","createdAt","updatedAt","idempotencyKey") VALUES ($1,$2,$3,$4,\'planning\',$5,$5,NOW(),NOW(),$6) RETURNING id',[batchExternal,userIdBigInt.toString(),sender.id,dto.body,staged.length,idem])).rows[0];
     const batchId=String(batch.id);
     const rows:string[]=[];const params:any[]=[];
     staged.forEach((x:any,i:number)=>{const b=i*6;rows.push(`($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},'pending',NOW(),NOW())`);params.push(batchId,x[0],x[1],x[2],x[3],x[4]);});
