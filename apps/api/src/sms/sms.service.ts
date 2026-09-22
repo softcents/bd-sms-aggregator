@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { QueueService } from '../queue/queue.service';
 
@@ -41,7 +42,7 @@ export class SmsService {
     const multiLimit = unicode ? 67 : 153;
     const parts = message.length <= singleLimit ? 1 : Math.ceil(message.length / multiLimit);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       if (input.idempotencyKey) {
         const existing = await tx.batch.findFirst({
           where: { userId, idempotencyKey: input.idempotencyKey },
@@ -98,7 +99,7 @@ export class SmsService {
       batchId: result.externalId,
       status: 'queued',
       total: recipients.length,
-      messageIds: messages.map((item) => item.externalId),
+      messageIds: messages.map((item: { externalId: string }) => item.externalId),
     };
   }
 
