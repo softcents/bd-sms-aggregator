@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { QueueService } from '../queue/queue.service';
+import { TariffsService } from '../tariffs/tariffs.service';
 
 export interface SendSmsInput {
   sender: string;
@@ -13,7 +14,11 @@ export interface SendSmsInput {
 
 @Injectable()
 export class SmsService {
-  constructor(private readonly prisma: PrismaService, private readonly queue: QueueService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly queue: QueueService,
+    private readonly tariffs: TariffsService,
+  ) {}
 
   async send(userId: bigint, input: SendSmsInput) {
     const sender = input.sender?.trim();
@@ -42,64 +47,116 @@ export class SmsService {
     const multiLimit = unicode ? 67 : 153;
     const parts = message.length <= singleLimit ? 1 : Math.ceil(message.length / multiLimit);
 
-    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (input.idempotencyKey) {
-        const existing = await tx.batch.findFirst({
+    const pricing = await Promise.all(
+      recipients.map(async (recipient) => {
+        const resolved = await this.tariffs.resolve(userId, recipient, parts);
+        if (!resolved) throw new BadRequestException(`No active tariff found for recipient ${recipient}`);
+        return { recipient, rate: resolved.rate, cost: resolved.cost };
+      }),
+    );
+
+    const totalCost = pricing.reduce((sum, item) => sum.add(item.cost), new Prisma.Decimal(0));
+
+    let created = false;
+    let result: Prisma.BatchGetPayload<{}>;
+
+    try {
+      result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        if (input.idempotencyKey) {
+          const existing = await tx.batch.findFirst({
+            where: { userId, idempotencyKey: input.idempotencyKey },
+          });
+          if (existing) return existing;
+        }
+
+        const batch = await tx.batch.create({
+          data: {
+            externalId: randomUUID(),
+            userId,
+            idempotencyKey: input.idempotencyKey,
+            status: 'queued',
+            total: recipients.length,
+            queued: recipients.length,
+            totalCost,
+          },
+        });
+
+        const debit = await tx.user.updateMany({
+          where: { id: userId, status: 'active', balance: { gte: totalCost } },
+          data: { balance: { decrement: totalCost } },
+        });
+
+        if (debit.count !== 1) throw new BadRequestException('Insufficient balance');
+
+        await tx.message.createMany({
+          data: pricing.map((item) => ({
+            externalId: randomUUID(),
+            userId,
+            batchId: batch.id,
+            sender,
+            recipient: item.recipient,
+            body: message,
+            status: 'queued',
+            parts,
+            rate: item.rate,
+            cost: item.cost,
+          })),
+        });
+
+        const updatedUser = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { balance: true },
+        });
+
+        await tx.transaction.create({
+          data: {
+            userId,
+            direction: 'debit',
+            amount: totalCost,
+            reference: `sms:${batch.externalId}`,
+            balance: updatedUser.balance,
+            meta: { type: 'sms_debit', batchId: batch.externalId, recipients: recipients.length, parts },
+          },
+        });
+
+        created = true;
+        return batch;
+      }, { isolationLevel: 'ReadCommitted' });
+    } catch (error) {
+      if (input.idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        result = await this.prisma.batch.findFirstOrThrow({
           where: { userId, idempotencyKey: input.idempotencyKey },
         });
-        if (existing) return existing;
+      } else {
+        throw error;
       }
-
-      const batch = await tx.batch.create({
-        data: {
-          externalId: randomUUID(),
-          userId,
-          idempotencyKey: input.idempotencyKey,
-          status: 'queued',
-          total: recipients.length,
-          queued: recipients.length,
-        },
-      });
-
-      await tx.message.createMany({
-        data: recipients.map((recipient) => ({
-          externalId: randomUUID(),
-          userId,
-          batchId: batch.id,
-          sender,
-          recipient,
-          body: message,
-          status: 'queued',
-          parts,
-          rate: 0,
-          cost: 0,
-        })),
-      });
-      return batch;
-    });
+    }
 
     const messages = await this.prisma.message.findMany({
       where: { batchId: result.id },
       select: { id: true, externalId: true, sender: true, recipient: true, body: true, parts: true },
     });
 
-    for (const item of messages) {
-      await this.queue.publishInfozillion({
-        messageId: item.id.toString(),
-        externalId: item.externalId,
-        userId: userId.toString(),
-        sender: item.sender,
-        recipient: item.recipient,
-        body: item.body,
-        parts: item.parts,
-      });
+    if (created) {
+      for (const item of messages) {
+        await this.queue.publishInfozillion({
+          messageId: item.id.toString(),
+          externalId: item.externalId,
+          userId: userId.toString(),
+          sender: item.sender,
+          recipient: item.recipient,
+          body: item.body,
+          parts: item.parts,
+        });
+      }
     }
 
     return {
       batchId: result.externalId,
-      status: 'queued',
-      total: recipients.length,
-      messageIds: messages.map((item: { externalId: string }) => item.externalId),
+      status: result.status,
+      total: result.total,
+      totalCost: result.totalCost.toString(),
+      messageIds: messages.map((item) => item.externalId),
     };
   }
 
