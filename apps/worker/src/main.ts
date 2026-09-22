@@ -269,11 +269,13 @@ async function pollDeliveryReports(): Promise<void> {
   }
 }
 
+let dlrInterval: NodeJS.Timeout | undefined;
+
 async function main() {
   await prisma.$connect();
   await channel.waitForConnect();
   console.log('InfoZillion worker ready');
-  const dlrInterval = setInterval(() => { pollDeliveryReports().catch((error) => console.error('DLR poller error', error)); }, Number(process.env.DLR_POLL_INTERVAL_MS || 30000));
+  dlrInterval = setInterval(() => { pollDeliveryReports().catch((error) => console.error('DLR poller error', error)); }, Number(process.env.DLR_POLL_INTERVAL_MS || 30000));
 
   await channel.consume('sms.infozillion', async (message: ConsumeMessage | null) => {
     if (!message) return;
@@ -287,7 +289,7 @@ async function main() {
 }
 
 async function shutdown() {
-  clearInterval(dlrInterval);
+  if (dlrInterval) clearInterval(dlrInterval);
   await channel.close();
   await connection.close();
   await prisma.$disconnect();
