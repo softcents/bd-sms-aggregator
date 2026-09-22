@@ -30,3 +30,5 @@ export async function markFailedAndRefund(externalId:string,reason:string,report
     await c.query('COMMIT');
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release();}
 }
+
+export async function resetForRetry(externalId:string){ await db.query('UPDATE "Message" SET status=\'queued\',"updatedAt"=NOW() WHERE "externalId"=$1 AND status=\'sending\'',[externalId]); }
