@@ -12,4 +12,6 @@ export class CampaignController{
  @Post('groups/:id/members') member(@Req()r:any,@Param('id')id:string,@Body()b:any){return this.s.addToGroup(r.userId,id,b.contactIds||[])}
  @Get('templates') templates(@Req()r:any){return this.s.templates(r.userId)}
  @Post('templates') template(@Req()r:any,@Body()b:any){return this.s.createTemplate(r.userId,b)}
+ @Post('contacts/import') importCsv(@Req()r:any,@Body()b:any){return this.s.importCsv(r.userId,b)}
+ @Get('imports') imports(@Req()r:any){return this.s.imports(r.userId)}
 }
