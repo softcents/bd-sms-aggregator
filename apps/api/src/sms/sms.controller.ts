@@ -1,2 +1,1 @@
-import { Body, Controller, Post } from '@nestjs/common'; import { SendSmsDto } from './dto/send-sms.dto'; import { SmsService } from './sms.service';
-@Controller('messages') export class SmsController { constructor(private readonly sms:SmsService){} @Post() send(@Body() dto:SendSmsDto){ return this.sms.send(dto); } }
+import { Body, Controller, Post, UseGuards } from '@nestjs/common'; import { SendSmsDto } from './dto/send-sms.dto'; import { SmsService } from './sms.service'; import { ApiKeyGuard } from '../auth/api-key.guard'; @Controller('messages') @UseGuards(ApiKeyGuard) export class SmsController { constructor(private readonly sms:SmsService){} @Post() send(@Body() dto:SendSmsDto){return this.sms.send(dto);} }
