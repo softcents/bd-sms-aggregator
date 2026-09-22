@@ -23,6 +23,9 @@ model User {
   apiKeys ApiKey[]
   tariffAssignments TariffPlanAssignment[]
   deposits Deposit[]
+  contacts Contact[]
+  contactGroups ContactGroup[]
+  templates SmsTemplate[]
   @@index([status])
 }
 
@@ -265,4 +268,50 @@ model Deposit {
   createdAt DateTime @default(now())
   user User @relation(fields:[userId],references:[id])
   @@index([userId,status])
+}
+
+model Contact {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  name String @default("")
+  phone String
+  email String?
+  groupName String?
+  metadata Json @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  memberships ContactGroupMember[]
+  @@unique([userId,phone])
+  @@index([userId])
+}
+model ContactGroup {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  name String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  members ContactGroupMember[]
+  @@unique([userId,name])
+}
+model ContactGroupMember {
+  groupId BigInt
+  contactId BigInt
+  group ContactGroup @relation(fields:[groupId],references:[id],onDelete:Cascade)
+  contact Contact @relation(fields:[contactId],references:[id],onDelete:Cascade)
+  @@id([groupId,contactId])
+  @@index([contactId])
+}
+model SmsTemplate {
+  id BigInt @id @default(autoincrement())
+  userId BigInt
+  name String
+  body String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@unique([userId,name])
+  @@index([userId])
 }
