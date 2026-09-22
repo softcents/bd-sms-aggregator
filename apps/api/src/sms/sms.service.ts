@@ -74,8 +74,9 @@ export class SmsService {
     await c.query('UPDATE "User" SET balance=$1,"updatedAt"=NOW() WHERE id=$2',[after.toFixed(6),userId.toString()]);
     await c.query('INSERT INTO "Transaction" ("userId",amount,direction,"balanceBefore","balanceAfter",description,"createdAt") VALUES ($1,$2,\'debit\',$3,$4,$5,NOW())',[userId.toString(),total.toFixed(6),before.toFixed(6),after.toFixed(6),'SMS batch '+batchExternal]);
     await c.query('UPDATE "Batch" SET status=\'queued\',"updatedAt"=NOW() WHERE id=$1',[batchId]);
+    await c.query('INSERT INTO "OutboxEvent" ("aggregateType","aggregateId","eventType",payload,"createdAt") VALUES (\'batch\',$1,\'sms.plan\',$2,NOW())',[batchExternal,JSON.stringify({batchId:batchExternal})]);
   });
-  await this.queue.publishPlan(batchExternal);
+  // Planning event is written transactionally to the outbox.
   return {status:'accepted',provider:'InfoZillion',batchId:batchExternal,recipients:recipients.length};
  }
 }
