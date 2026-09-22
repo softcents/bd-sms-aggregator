@@ -1,0 +1,1 @@
+import { Module,MiddlewareConsumer,RequestMethod } from '@nestjs/common'; import { RedisRateLimitMiddleware } from './redis-rate-limit.middleware'; @Module({}) export class SecurityModule { configure(consumer:MiddlewareConsumer){consumer.apply(RedisRateLimitMiddleware).forRoutes({path:'*',method:RequestMethod.ALL});} }
