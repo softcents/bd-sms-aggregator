@@ -13,6 +13,7 @@ import { SecurityModule } from './security/security.module';
 import { SenderModule } from './senders/sender.module';
 import { AdminModule } from './admin/admin.module';
 import { CampaignModule } from './campaign/campaign.module';
+import { MetricsModule } from './metrics/metrics.module';
 
-@Module({imports:[ConfigModule.forRoot({isGlobal:true}),SecurityModule,SenderModule,AuthModule,AdminModule,CampaignModule,QueueModule,InfozillionModule,HealthModule,BillingModule,RoutingModule,PostgresModule,ReportsModule,SmsModule]})
+@Module({imports:[ConfigModule.forRoot({isGlobal:true}),SecurityModule,MetricsModule,SenderModule,AuthModule,AdminModule,CampaignModule,QueueModule,InfozillionModule,HealthModule,BillingModule,RoutingModule,PostgresModule,ReportsModule,SmsModule]})
 export class AppModule {}
