@@ -1,7 +1,6 @@
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import crypto from 'crypto';
 import Decimal from 'decimal.js';
-import { QueueService } from '../queue/queue.service';
 import { PostgresService } from '../db/postgres.service';
 import { SendSmsDto } from './dto/send-sms.dto';
 
@@ -26,7 +25,7 @@ function sqlValues(rows:any[],columns:number){
 
 @Injectable()
 export class SmsService {
- constructor(private readonly queue:QueueService,private readonly db:PostgresService){}
+ constructor(private readonly db:PostgresService){}
 
  async send(dto:SendSmsDto,userId?:string,idempotencyKey?:string){
   if(!userId)throw new UnauthorizedException('Authenticated user required');
