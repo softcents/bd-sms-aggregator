@@ -82,5 +82,16 @@ export class CampaignService{
    else throw new BadRequestException('Unknown action');await c.query('COMMIT');return {status:'ok',action,campaignId:id}}
    catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
  }
- async campaigns(uid:string){return (await this.db.pool.query('SELECT b."externalId",b.status,b.body,b."totalRecipients",b."validCount",b."invalidCount",b."createdAt",COALESCE(SUM(m.cost),0)::numeric cost FROM "Batch" b LEFT JOIN "Message" m ON m."batchId"=b.id WHERE b."userId"=$1 GROUP BY b.id ORDER BY b.id DESC LIMIT 100',[uid])).rows}
+ async campaigns(uid:string){
+   return (await this.db.pool.query(`SELECT b."externalId",b.status,b.body,b."totalRecipients",b."validCount",b."invalidCount",
+     COUNT(m.id)::int messages,
+     COUNT(m.id) FILTER (WHERE m.status='queued')::int queued,
+     COUNT(m.id) FILTER (WHERE m.status='sending')::int sending,
+     COUNT(m.id) FILTER (WHERE m.status='sent')::int sent,
+     COUNT(m.id) FILTER (WHERE m.status='delivered')::int delivered,
+     COUNT(m.id) FILTER (WHERE m.status='failed')::int failed,
+     COALESCE(SUM(m.cost),0)::numeric cost,b."createdAt"
+     FROM "Batch" b LEFT JOIN "Message" m ON m."batchId"=b.id
+     WHERE b."userId"=$1 GROUP BY b.id ORDER BY b.id DESC LIMIT 100`,[uid])).rows;
+ }
 }
