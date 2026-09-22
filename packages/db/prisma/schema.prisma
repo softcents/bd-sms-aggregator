@@ -210,6 +210,7 @@ model Batch {
   messages Message[]
   @@index([userId,createdAt])
   @@index([status])
+  campaignRecipients CampaignRecipient[]
 }
 
 model Message {
@@ -341,4 +342,20 @@ model ContactImport {
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   group ContactGroup? @relation(fields:[groupId],references:[id],onDelete:SetNull)
   @@index([userId,createdAt])
+}
+model CampaignRecipient {
+  id BigInt @id @default(autoincrement())
+  batchId BigInt
+  phone String
+  operatorId BigInt?
+  rate Decimal? @db.Decimal(18,6)
+  cost Decimal? @db.Decimal(18,6)
+  parts Int @default(1)
+  status String @default("pending")
+  messageId BigInt?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  batch Batch @relation(fields:[batchId],references:[id])
+  @@unique([batchId,phone])
+  @@index([batchId,status,id])
 }
