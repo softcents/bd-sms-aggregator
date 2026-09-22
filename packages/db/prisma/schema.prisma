@@ -8,6 +8,7 @@ enum TransactionDirection { debit credit }
 model User {
   id BigInt @id @default(autoincrement())
   name String
+  username String @unique
   email String @unique
   passwordHash String?
   role String @default("customer")
