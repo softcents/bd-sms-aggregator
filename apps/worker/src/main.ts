@@ -137,10 +137,143 @@ async function processMessage(message: ConsumeMessage): Promise<void> {
   }
 }
 
+
+async function pollDeliveryReports(): Promise<void> {
+  const due = await prisma.message.findMany({
+    where: {
+      status: 'sent',
+      gatewayMessageId: { not: null },
+      OR: [{ nextPollAt: null }, { nextPollAt: { lte: new Date() } }],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: Number(process.env.DLR_BATCH_SIZE || 50),
+    select: {
+      id: true,
+      batchId: true,
+      gatewayMessageId: true,
+      recipient: true,
+      pollAttempts: true,
+    },
+  });
+
+  for (const item of due) {
+    if (!item.gatewayMessageId) continue;
+
+    const baseUrl = (process.env.INFOZILLION_BASE_URL || 'https://api.mnpspbd.com').replace(/\/+$/, '');
+    const apiType = (process.env.INFOZILLION_API_TYPE || 'iptsp').toLowerCase();
+    const endpoint = apiType === 'iptsp'
+      ? '/a2p-proxy-api-iptsp/api/v1/check-delivery-report'
+      : '/a2p-proxy-api/api/v1/check-delivery-report';
+
+    try {
+      const response = await fetch(baseUrl + endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          username: process.env.INFOZILLION_USERNAME || '',
+          password: process.env.INFOZILLION_PASSWORD || '',
+          billMsisdn: process.env.INFOZILLION_BILL_MSISDN || '',
+          apiKey: process.env.INFOZILLION_API_KEY || '',
+          msisdnList: [item.recipient.replace(/^\+/, '')],
+          serverReference: item.gatewayMessageId,
+        }),
+        signal: AbortSignal.timeout(Number(process.env.INFOZILLION_DLR_TIMEOUT_MS || 10000)),
+      });
+
+      const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok || String(data.serverResponseCode ?? '') !== '9000') {
+        throw new Error(String(data.serverResponseMessage || ('HTTP ' + response.status)));
+      }
+
+      const dnd = Array.isArray(data.dndMsisdn) && data.dndMsisdn.length > 0;
+      const invalid = Array.isArray(data.invalidMsisdn) && data.invalidMsisdn.length > 0;
+      const statuses = Array.isArray(data.deliveryStatus) ? data.deliveryStatus : [];
+      const rawStatus = String(statuses[0] ?? data.a2pDeliveryStatus ?? '');
+      const normalized = rawStatus.includes('-')
+        ? rawStatus.split('-', 2)[1].trim().toLowerCase()
+        : rawStatus.trim().toLowerCase();
+
+      const delivered = !dnd && !invalid && normalized === 'delivered';
+      const failed = dnd || invalid || normalized === 'failed' || normalized === 'undelivered'
+        || normalized.includes('failure');
+
+      const current = await prisma.message.findUnique({
+        where: { id: item.id },
+        select: { status: true, batchId: true },
+      });
+      if (!current || current.status !== 'sent') continue;
+
+      if (delivered || failed) {
+        const nextStatus = delivered ? 'delivered' : 'failed';
+        const reason = dnd
+          ? 'Recipient filtered due to DND enlistment'
+          : invalid
+            ? 'Invalid MSISDN prefix or format'
+            : failed ? 'SMS delivery failed' : null;
+
+        await prisma.message.update({
+          where: { id: item.id },
+          data: {
+            status: nextStatus,
+            deliveredAt: delivered ? new Date() : null,
+            failedAt: failed ? new Date() : null,
+            failedReason: reason,
+            pollAttempts: { increment: 1 },
+            nextPollAt: null,
+            infozillionReport: data as object,
+          },
+        });
+
+        if (current.batchId) {
+          await prisma.batch.update({
+            where: { id: current.batchId },
+            data: delivered
+              ? { delivered: { increment: 1 } }
+              : { failed: { increment: 1 } },
+          });
+        }
+      } else {
+        const attempts = item.pollAttempts + 1;
+        const maxAttempts = Number(process.env.DLR_MAX_ATTEMPTS || 20);
+        const expired = attempts >= maxAttempts;
+
+        await prisma.message.update({
+          where: { id: item.id },
+          data: {
+            status: expired ? 'failed' : 'sent',
+            failedAt: expired ? new Date() : null,
+            failedReason: expired ? 'DLR polling timeout' : null,
+            pollAttempts: attempts,
+            nextPollAt: expired ? null : new Date(Date.now() + Math.min(300000, 15000 * Math.pow(2, Math.min(attempts, 5)))),
+            infozillionReport: data as object,
+          },
+        });
+
+        if (expired && current.batchId) {
+          await prisma.batch.update({
+            where: { id: current.batchId },
+            data: { failed: { increment: 1 } },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('DLR polling error', item.id.toString(), error);
+      await prisma.message.update({
+        where: { id: item.id },
+        data: {
+          pollAttempts: { increment: 1 },
+          nextPollAt: new Date(Date.now() + 30000),
+        },
+      }).catch(() => undefined);
+    }
+  }
+}
+
 async function main() {
   await prisma.$connect();
   await channel.waitForConnect();
   console.log('InfoZillion worker ready');
+  const dlrInterval = setInterval(() => { pollDeliveryReports().catch((error) => console.error('DLR poller error', error)); }, Number(process.env.DLR_POLL_INTERVAL_MS || 30000));
 
   await channel.consume('sms.infozillion', async (message: ConsumeMessage | null) => {
     if (!message) return;
@@ -154,6 +287,7 @@ async function main() {
 }
 
 async function shutdown() {
+  clearInterval(dlrInterval);
   await channel.close();
   await connection.close();
   await prisma.$disconnect();
