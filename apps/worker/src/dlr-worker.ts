@@ -13,9 +13,15 @@ function reasonOf(d:any){return d.dndMsisdn?'DND':d.invalidMsisdn?'Invalid MSISD
 
 async function run(){
   const batchSize=Number(process.env.DLR_BATCH_SIZE||100);
-  const q=await db.query(`SELECT id,"externalId","gatewayMessageId",to,"pollAttempt"
-    FROM "Message" WHERE status='sent' AND "gatewayMessageId" IS NOT NULL AND "nextPollAt"<=NOW()
-    ORDER BY "nextPollAt" ASC LIMIT $1 FOR UPDATE SKIP LOCKED`,[batchSize]);
+  const q=await db.query(`WITH picked AS (
+    SELECT id FROM "Message"
+    WHERE status='sent' AND "gatewayMessageId" IS NOT NULL AND "nextPollAt"<=NOW()
+      AND ("dlrClaimedAt" IS NULL OR "dlrClaimedAt" < NOW()-INTERVAL '2 minutes')
+    ORDER BY "nextPollAt" ASC LIMIT $1 FOR UPDATE SKIP LOCKED
+  )
+  UPDATE "Message" m SET "dlrClaimedAt"=NOW(),"updatedAt"=NOW()
+  FROM picked p WHERE m.id=p.id
+  RETURNING m.id,m."externalId",m."gatewayMessageId",m.to,m."pollAttempt"`,[batchSize]);
   for(const m of q.rows){
     try{
       const data=await fetchDlr({recipient:m.to,gatewayMessageId:m.gatewayMessageId});
