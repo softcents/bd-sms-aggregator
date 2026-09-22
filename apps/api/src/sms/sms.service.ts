@@ -35,7 +35,7 @@ export class SmsService {
   const batchExternal=crypto.randomUUID();
   const unicode=dto.isUnicode??/[\u0080-\uFFFF]/u.test(dto.body);
   const messageParts=parts(dto.body,unicode);
-  const recipients=[...new Set(dto.to.map(normalizeMsisdn))];
+  const recipients=dto.to.map(normalizeMsisdn);
   const chunkSize=Math.min(Math.max(Number(process.env.SMS_DB_CHUNK_SIZE||1000),100),2000);
 
   await this.db.tx(async c=>{
