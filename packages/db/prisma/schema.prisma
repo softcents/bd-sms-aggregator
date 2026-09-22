@@ -6,9 +6,24 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum UserStatus { active suspended pending disabled }
-enum MessageStatus { pending queued sending sent delivered failed }
-enum TransactionDirection { debit credit }
+enum UserStatus {
+  active
+  suspended
+  pending
+  disabled
+}
+enum MessageStatus {
+  pending
+  queued
+  sending
+  sent
+  delivered
+  failed
+}
+enum TransactionDirection {
+  debit
+  credit
+}
 
 model User {
   id BigInt @id @default(autoincrement())
