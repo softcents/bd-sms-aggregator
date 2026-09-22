@@ -1,0 +1,1 @@
+import crypto from 'crypto'; export function hashPassword(password:string){return crypto.scryptSync(password,process.env.PASSWORD_PEPPER||'',64).toString('hex');} export function verifyPassword(password:string,hash:string){try{return crypto.timingSafeEqual(Buffer.from(hash,'hex'),Buffer.from(hashPassword(password),'hex'));}catch{return false;}}
