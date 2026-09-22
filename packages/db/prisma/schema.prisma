@@ -47,6 +47,7 @@ model Sender {
   userId BigInt
   senderId String
   type String?
+  billMsisdn String?
   status String @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
