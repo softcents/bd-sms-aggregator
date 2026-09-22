@@ -154,6 +154,8 @@ model Message {
   sentAt            DateTime?
   deliveredAt       DateTime?
   failedAt          DateTime?
+  nextPollAt        DateTime?
+  pollAttempts      Int           @default(0)
   createdAt         DateTime      @default(now())
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   batch             Batch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
