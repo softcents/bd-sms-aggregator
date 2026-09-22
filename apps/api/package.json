@@ -1,1 +1,18 @@
-{"name":"sms-api","private":true,"scripts":{"build":"nest build"},"dependencies":{"@nestjs/common":"^11.1.6","@nestjs/core":"^11.1.6","@nestjs/platform-express":"^11.1.6"},"devDependencies":{"@nestjs/cli":"^11.0.10","@types/node":"^24.5.2","typescript":"^5.9.2"}}
+{
+  "name": "sms-api",
+  "private": true,
+  "scripts": {
+    "build": "nest build"
+  },
+  "dependencies": {
+    "@bd-sms/db": "1.0.0",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.10",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}
