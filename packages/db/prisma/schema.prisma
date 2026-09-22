@@ -247,6 +247,7 @@ model Message {
   @@index([userId,status,createdAt])
   @@index([gatewayMessageId])
   @@index([nextPollAt])
+  @@index([dlrClaimedAt,status])
   @@index([to])
 }
 
