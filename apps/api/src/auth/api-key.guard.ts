@@ -1,1 +1,28 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common'; import crypto from 'crypto'; import { PostgresService } from '../db/postgres.service'; @Injectable() export class ApiKeyGuard implements CanActivate { constructor(private readonly db:PostgresService){} async canActivate(ctx:ExecutionContext){const req=ctx.switchToHttp().getRequest();const key=String(req.headers['x-api-key']||'');if(!key)throw new UnauthorizedException('API key required');const hash=crypto.createHash('sha256').update(key).digest('hex');const q=await this.db.pool.query('SELECT id,"userId","expiresAt","allowedIps" FROM "ApiKey" WHERE "keyHash"=$1 AND enabled=true',[hash]);if(!q.rowCount)throw new UnauthorizedException('Invalid API key');const k=q.rows[0];if(k.expiresAt&&new Date(k.expiresAt)<=new Date())throw new UnauthorizedException('API key expired');const ip=String(req.ip||req.socket.remoteAddress||'unknown').replace(/^::ffff:/,'');const allowed=Array.isArray(k.allowedIps)?k.allowedIps:[];if(allowed.length&&!allowed.includes(ip))throw new UnauthorizedException('API key is not allowed from this IP');req.userId=String(k.userId);await this.db.pool.query('UPDATE "ApiKey" SET "lastUsedAt"=NOW(),"lastIp"=$1 WHERE id=$2',[ip,k.id]);return true;}}
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import crypto from 'crypto';
+import { PostgresService } from '../db/postgres.service';
+
+@Injectable()
+export class ApiKeyGuard implements CanActivate {
+  constructor(private readonly db:PostgresService){}
+  async canActivate(ctx:ExecutionContext){
+    const req=ctx.switchToHttp().getRequest();
+    const key=String(req.headers['x-api-key']||'');
+    if(!key)throw new UnauthorizedException('API key required');
+    const hash=crypto.createHash('sha256').update(key).digest('hex');
+    const q=await this.db.pool.query(
+      'SELECT k.id,k."userId",k."expiresAt",k."allowedIps",u.status FROM "ApiKey" k JOIN "User" u ON u.id=k."userId" WHERE k."keyHash"=$1 AND k.enabled=true',
+      [hash],
+    );
+    if(!q.rowCount)throw new UnauthorizedException('Invalid API key');
+    const k=q.rows[0];
+    if(k.status!=='active')throw new UnauthorizedException('User account is not active');
+    if(k.expiresAt&&new Date(k.expiresAt)<=new Date())throw new UnauthorizedException('API key expired');
+    const ip=String(req.ip||req.socket.remoteAddress||'unknown').replace(/^::ffff:/,'');
+    const allowed=Array.isArray(k.allowedIps)?k.allowedIps:[];
+    if(allowed.length&&!allowed.includes(ip))throw new UnauthorizedException('API key is not allowed from this IP');
+    req.userId=String(k.userId);
+    await this.db.pool.query('UPDATE "ApiKey" SET "lastUsedAt"=NOW(),"lastIp"=$1 WHERE id=$2',[ip,k.id]);
+    return true;
+  }
+}
