@@ -14,12 +14,18 @@ export class CampaignService{
  async createGroup(uid:string,b:any){const q=await this.db.pool.query('INSERT INTO "ContactGroup" ("userId",name,description,"createdAt","updatedAt") VALUES ($1,$2,$3,NOW(),NOW()) RETURNING *',[uid,String(b.name||'').trim(),b.description||null]);return q.rows[0]}
  async addToGroup(uid:string,groupId:string,contactIds:string[]){const g=await this.db.pool.query('SELECT id FROM "ContactGroup" WHERE id=$1 AND "userId"=$2',[groupId,uid]);if(!g.rowCount)throw new NotFoundException('Group not found');for(const id of [...new Set(contactIds)])await this.db.pool.query('INSERT INTO "ContactGroupMember" ("groupId","contactId") SELECT $1,c.id FROM "Contact" c WHERE c.id=$2 AND c."userId"=$3 ON CONFLICT DO NOTHING',[groupId,id,uid]);return {status:'ok'}}
  async importCsv(uid:string,b:any){
-   const csv=String(b.csv||'');if(!csv.trim())throw new BadRequestException('csv is required');
-   const rows=csv.split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);if(!rows.length)throw new BadRequestException('CSV is empty');
-   const header=rows[0].split(',').map(x=>x.trim().toLowerCase());const phoneIdx=header.findIndex(x=>['phone','mobile','msisdn','number'].includes(x));const nameIdx=header.findIndex(x=>x==='name');if(phoneIdx<0)throw new BadRequestException('CSV must contain phone/mobile/msisdn/number column');
-   const ext=crypto.randomUUID();const ins=await this.db.pool.query('INSERT INTO "ContactImport" ("externalId","userId","fileName",status,"totalRows","groupId") VALUES ($1,$2,$3,\'processing\',$4,$5) RETURNING id',[ext,uid,b.fileName||null,rows.length-1,b.groupId?String(b.groupId):null]);
-   let imported=0,skipped=0,errors=0;const errorReport:any[]=[];const client=await this.db.pool.connect();
-   try{for(let start=1;start<rows.length;start+=1000){await client.query('BEGIN');for(let i=start;i<Math.min(start+1000,rows.length);i++){const cols=rows[i].split(',').map(x=>x.trim().replace(/^"|"$/g,''));const phone=norm(cols[phoneIdx]||'');if(phone.length<11){errors++;if(errorReport.length<100)errorReport.push({row:i+1,error:'invalid phone'});continue}try{const q=await client.query('INSERT INTO "Contact" ("userId",name,phone,email,metadata,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,NOW(),NOW()) ON CONFLICT ("userId","phone") DO NOTHING RETURNING id',[uid,nameIdx>=0?cols[nameIdx]||'': '',phone,null,JSON.stringify({importId:ext})]);if(q.rowCount){imported++;if(b.groupId)await client.query('INSERT INTO "ContactGroupMember" ("groupId","contactId") VALUES ($1,$2) ON CONFLICT DO NOTHING',[String(b.groupId),q.rows[0].id])}else skipped++}catch(e){errors++;if(errorReport.length<100)errorReport.push({row:i+1,error:'insert failed'})}}await client.query('COMMIT')}await this.db.pool.query('UPDATE "ContactImport" SET status=\'completed\',"importedRows"=$1,"skippedRows"=$2,"errorRows"=$3,"errorReport"=$4,"completedAt"=NOW() WHERE id=$5',[imported,skipped,errors,JSON.stringify(errorReport),ins.rows[0].id]);return {status:'completed',importId:ext,totalRows:rows.length-1,importedRows:imported,skippedRows:skipped,errorRows:errors}}catch(e){await client.query('ROLLBACK').catch(()=>{});await this.db.pool.query('UPDATE "ContactImport" SET status=\'failed\',"errorReport"=$1 WHERE id=$2',[JSON.stringify([{error:String((e as any).message||e)}]),ins.rows[0].id]);throw e}finally{client.release()}
+   const csv=String(b.csv||'');
+   if(!csv.trim())throw new BadRequestException('csv is required');
+   const rows=csv.split(/\r?\n/).filter(Boolean);
+   if(rows.length<2)throw new BadRequestException('CSV is empty');
+   const header=rows[0].split(',').map(x=>x.trim().toLowerCase());
+   if(!header.some(x=>['phone','mobile','msisdn','number'].includes(x)))throw new BadRequestException('CSV must contain phone/mobile/msisdn/number column');
+   const ext=crypto.randomUUID();
+   const q=await this.db.pool.query(`INSERT INTO "ContactImport" ("externalId","userId","fileName",status,"totalRows","groupId","sourceData","createdAt")
+     VALUES ($1,$2,$3,'queued',$4,$5,$6,NOW()) RETURNING "externalId","totalRows"`,
+     [ext,uid,b.fileName||null,rows.length-1,b.groupId?String(b.groupId):null,csv]);
+   await this.queue.publishImport(ext);
+   return {status:'queued',importId:q.rows[0].externalId,totalRows:q.rows[0].totalRows};
  }
  async imports(uid:string){return (await this.db.pool.query('SELECT "externalId",status,"fileName","totalRows","importedRows","skippedRows","errorRows","createdAt","completedAt" FROM "ContactImport" WHERE "userId"=$1 ORDER BY id DESC LIMIT 50',[uid])).rows}
  async templates(uid:string){return (await this.db.pool.query('SELECT * FROM "SmsTemplate" WHERE "userId"=$1 ORDER BY id DESC',[uid])).rows}
