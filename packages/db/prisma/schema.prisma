@@ -190,6 +190,7 @@ model Message {
   parts Int @default(1)
   isUnicode Boolean @default(false)
   failedReason String?
+  refundReference String? @unique
   pollAttempt Int @default(0)
   sentAt DateTime?
   failedAt DateTime?
