@@ -59,6 +59,11 @@ services:
       postgres: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
     command: ["node","apps/worker/dist/main.js"]
+    healthcheck:
+      test: ["CMD-SHELL","wget -qO- http://localhost:9101/health | grep -q 'ok'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   importer:
     build:
@@ -118,6 +123,11 @@ services:
     restart: unless-stopped
     depends_on: [api,web]
     ports: ["80:80"]
+    healthcheck:
+      test: ["CMD-SHELL","wget -qO- http://localhost/health | grep -q 'ok'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     volumes:
       - nginx_cache:/var/cache/nginx
 
