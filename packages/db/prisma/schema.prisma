@@ -210,9 +210,11 @@ model Batch {
   sender Sender? @relation(fields:[senderId],references:[id])
   messages Message[]
   @@index([userId,createdAt])
+  @@unique([userId,idempotencyKey])
   @@index([status])
   campaignRecipients CampaignRecipient[]
   smsRecipients SmsRecipient[]
+  idempotencyKey String?
 }
 
 model Message {
