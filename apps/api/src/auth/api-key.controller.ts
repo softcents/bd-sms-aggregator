@@ -27,7 +27,29 @@ export class ApiKeyController {
     const expires=body.expiresAt===undefined?null:this.expiry(body.expiresAt);
     const fields:string[]=[];const vals:any[]=[];
     if(ips!==null){fields.push('"allowedIps"=$'+(vals.length+1));vals.push(ips);}
-    if(body.expiresAt!==undefined){fields.push('"expiresAt=$'+(vals.length+1));vals.push(expires);}
+    if(body.expiresAt!==undefined){fields.push('"expiresAt"=vals.push(expires);}
+    if(body.name!==undefined){fields.push('name=$'+(vals.length+1));vals.push(String(body.name).slice(0,100));}
+    if(!fields.length)throw new BadRequestException('No changes supplied');
+    vals.push(id,this.uid(req));
+    const q=await this.db.pool.query('UPDATE "ApiKey" SET '+fields.join(',')+' WHERE id=$'+(vals.length-1)+' AND "userId"=$'+vals.length+' RETURNING id,"externalId",name,"allowedIps","expiresAt",enabled',[...vals]);
+    if(!q.rowCount)throw new UnauthorizedException('API key not found');
+    return q.rows[0];
+  }
+  @Post(':id/rotate') async rotate(@Req() req:any,@Param('id') id:string){
+    const raw='sk_'+crypto.randomBytes(32).toString('hex');
+    const hash=crypto.createHash('sha256').update(raw).digest('hex');
+    const q=await this.db.pool.query('UPDATE "ApiKey" SET "keyHash"=$1,"lastUsedAt"=NULL,"lastIp"=NULL WHERE id=$2 AND "userId"=$3 AND enabled=true RETURNING id,"externalId",name,"expiresAt","allowedIps"',[hash,id,this.uid(req)]);
+    if(!q.rowCount)throw new UnauthorizedException('API key not found');
+    return {...q.rows[0],apiKey:raw};
+  }
+  @Delete(':id') async revoke(@Req() req:any,@Param('id') id:string){
+    const q=await this.db.pool.query('UPDATE "ApiKey" SET enabled=false WHERE id=$1 AND "userId"=$2 RETURNING id,"externalId",name',[id,this.uid(req)]);
+    if(!q.rowCount)throw new UnauthorizedException('API key not found');
+    return {status:'revoked',...q.rows[0]};
+  }
+  private normalizeIps(v:any){if(v===undefined||v===null)return [];if(!Array.isArray(v))throw new BadRequestException('allowedIps must be an array');return [...new Set(v.map((x:any)=>String(x).trim()).filter(Boolean))].slice(0,50);}
+  private expiry(v:any){if(v===undefined||v===null||v==='')return null;const d=new Date(v);if(Number.isNaN(d.getTime())||d<=new Date())throw new BadRequestException('expiresAt must be a future date');return d.toISOString();}
+}+(vals.length+1));vals.push(expires);}
     if(body.name!==undefined){fields.push('name=$'+(vals.length+1));vals.push(String(body.name).slice(0,100));}
     if(!fields.length)throw new BadRequestException('No changes supplied');
     vals.push(id,this.uid(req));
