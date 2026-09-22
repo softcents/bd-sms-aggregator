@@ -7,7 +7,12 @@ export async function claimForSending(externalId:string){
 }
 
 export async function markSent(externalId:string,gatewayMessageId:string,report:any){
-  await db.query('UPDATE "Message" SET status=$1,"gatewayMessageId"=$2,"sentAt"=NOW(),"infozillionReport"=$3,"nextPollAt"=NOW(),"updatedAt"=NOW() WHERE "externalId"=$4 AND status=\'sending\'',['sent',gatewayMessageId,JSON.stringify(report),externalId]);
+  const c=await db.connect();
+  try{await c.query('BEGIN');
+    const q=await c.query('UPDATE "Message" SET status=$1,"gatewayMessageId"=$2,"sentAt"=NOW(),"infozillionReport"=$3,"nextPollAt"=NOW(),"updatedAt"=NOW() WHERE "externalId"=$4 AND status=\'sending\' RETURNING "batchId"',['sent',gatewayMessageId,JSON.stringify(report),externalId]);
+    if(q.rowCount&&q.rows[0].batchId){await c.query('UPDATE "Batch" SET status=\'completed\',"completedAt"=NOW(),"updatedAt"=NOW() WHERE id=$1 AND status NOT IN (\'paused\',\'cancelled\') AND NOT EXISTS (SELECT 1 FROM "Message" m WHERE m."batchId"=$1 AND m.status IN (\'queued\',\'pending\',\'sending\'))',[q.rows[0].batchId]);}
+    await c.query('COMMIT');
+  }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
 }
 
 export async function markFailedAndRefund(externalId:string,reason:string,report:any){
