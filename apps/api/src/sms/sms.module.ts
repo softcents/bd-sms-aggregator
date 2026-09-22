@@ -1,0 +1,1 @@
+import { Module } from '@nestjs/common'; import { InfozillionModule } from '../infozillion/infozillion.module'; import { SmsController } from './sms.controller'; import { SmsService } from './sms.service'; @Module({imports:[InfozillionModule],controllers:[SmsController],providers:[SmsService]}) export class SmsModule {}
