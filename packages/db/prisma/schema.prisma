@@ -1,0 +1,190 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  active
+  suspended
+  pending
+  disabled
+}
+
+enum MessageStatus {
+  pending
+  queued
+  sending
+  sent
+  delivered
+  failed
+}
+
+enum TransactionDirection {
+  debit
+  credit
+}
+
+model User {
+  id           BigInt     @id @default(autoincrement())
+  username     String     @unique
+  name         String
+  email        String     @unique
+  passwordHash String?
+  role         String     @default("customer")
+  status       UserStatus @default(active)
+  balance      Decimal    @default(0) @db.Decimal(18, 6)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  apiKeys      ApiKey[]
+  senders      Sender[]
+  batches      Batch[]
+  messages     Message[]
+  transactions Transaction[]
+}
+
+model ApiKey {
+  id          BigInt    @id @default(autoincrement())
+  externalId  String    @unique
+  userId      BigInt
+  name        String
+  keyHash     String    @unique
+  enabled     Boolean   @default(true)
+  allowedIps  String[]  @default([])
+  lastIp      String?
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Sender {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt
+  sender    String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, sender])
+}
+
+model Operator {
+  id        BigInt           @id @default(autoincrement())
+  name      String
+  code      String           @unique
+  prefixes  OperatorPrefix[]
+  rates     TariffRate[]
+}
+
+model OperatorPrefix {
+  id         BigInt   @id @default(autoincrement())
+  operatorId BigInt
+  prefix     String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  @@unique([operatorId, prefix])
+  @@index([prefix])
+}
+
+model TariffPlan {
+  id        BigInt      @id @default(autoincrement())
+  name      String
+  active    Boolean     @default(true)
+  rates     TariffRate[]
+  createdAt DateTime    @default(now())
+}
+
+model TariffRate {
+  id          BigInt    @id @default(autoincrement())
+  tariffPlanId BigInt
+  operatorId  BigInt
+  rate        Decimal  @db.Decimal(18, 6)
+  tariffPlan  TariffPlan @relation(fields: [tariffPlanId], references: [id], onDelete: Cascade)
+  operator    Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  @@unique([tariffPlanId, operatorId])
+}
+
+model Gateway {
+  id        BigInt   @id @default(autoincrement())
+  name      String
+  provider  String   @default("infozillion")
+  apiType   String   @default("iptsp")
+  enabled   Boolean  @default(true)
+  config    Json
+  createdAt DateTime @default(now())
+}
+
+model Batch {
+  id             BigInt    @id @default(autoincrement())
+  externalId     String    @unique
+  userId         BigInt
+  idempotencyKey String?
+  status         MessageStatus @default(pending)
+  total          Int       @default(0)
+  queued         Int       @default(0)
+  sent           Int       @default(0)
+  delivered      Int       @default(0)
+  failed         Int       @default(0)
+  totalCost      Decimal   @default(0) @db.Decimal(18, 6)
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+model Message {
+  id                BigInt        @id @default(autoincrement())
+  externalId        String        @unique
+  userId            BigInt
+  batchId           BigInt?
+  sender            String
+  recipient         String
+  body              String
+  status            MessageStatus @default(pending)
+  parts             Int           @default(1)
+  rate              Decimal       @default(0) @db.Decimal(18, 6)
+  cost              Decimal       @default(0) @db.Decimal(18, 6)
+  gatewayMessageId  String?
+  failedReason      String?
+  infozillionReport Json?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime      @default(now())
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch             Batch?        @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([batchId])
+}
+
+model Transaction {
+  id        BigInt               @id @default(autoincrement())
+  userId    BigInt
+  direction TransactionDirection
+  amount    Decimal              @db.Decimal(18, 6)
+  reference String               @unique
+  balance   Decimal              @db.Decimal(18, 6)
+  meta      Json?
+  createdAt DateTime             @default(now())
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+
+model OutboxEvent {
+  id            BigInt    @id @default(autoincrement())
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       Json
+  publishedAt   DateTime?
+  attempts      Int       @default(0)
+  availableAt   DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  @@index([publishedAt, availableAt])
+  @@index([aggregateType, aggregateId])
+}
