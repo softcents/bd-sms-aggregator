@@ -39,16 +39,19 @@ function App(){
   const [keyName,setKeyName]=useState('');const [newKey,setNewKey]=useState('');const [msg,setMsg]=useState('');
   const [deposit,setDeposit]=useState('');const [reference,setReference]=useState('');
   const [sf,setSf]=useState({senderId:'',type:'non-masking',billMsisdn:''});
+  const [campaigns,setCampaigns]=useState<any[]>([]);const [groups,setGroups]=useState<any[]>([]);const [templates,setTemplates]=useState<any[]>([]);const [imports,setImports]=useState<any[]>([]);
+  const [campaign,setCampaign]=useState({senderId:'',body:'',recipients:'',groupIds:[] as string[],scheduledAt:''});const [importCsv,setImportCsv]=useState('');
   async function load(){
     if(!key())return;
     const h=headers();
-    const [a,b,c,d,e,f]=await Promise.all([
+    const [a,b,c,d,e,f,g,h,i,j]=await Promise.all([
       fetch(API+'/reports/summary',{headers:h}),fetch(API+'/reports/messages?limit=20',{headers:h}),
       fetch(API+'/api-keys',{headers:h}),fetch(API+'/senders',{headers:h}),
-      fetch(API+'/billing/transactions?limit=30',{headers:h}),fetch(API+'/billing/deposits',{headers:h})
+      fetch(API+'/billing/transactions?limit=30',{headers:h}),fetch(API+'/billing/deposits',{headers:h}),
+      fetch(API+'/campaigns',{headers:h}),fetch(API+'/campaigns/groups',{headers:h}),fetch(API+'/campaigns/templates',{headers:h}),fetch(API+'/campaigns/imports',{headers:h})
     ]);
-    if([a,b,c,d,e,f].some(x=>x.status===401)){localStorage.removeItem('apiKey');setLogged(false);return}
-    setSummary(await a.json());setMessages(await b.json());setKeys(await c.json());setSenders(await d.json());setTransactions(await e.json());setDeposits(await f.json());
+    if([a,b,c,d,e,f,g,h,i,j].some(x=>x.status===401)){localStorage.removeItem('apiKey');setLogged(false);return}
+    setSummary(await a.json());setMessages(await b.json());setKeys(await c.json());setSenders(await d.json());setTransactions(await e.json());setDeposits(await f.json());setCampaigns(await g.json());setGroups(await h.json());setTemplates(await i.json());setImports(await j.json());
   }
   useEffect(()=>{load()},[logged]);
   function logout(){localStorage.removeItem('apiKey');setLogged(false)}
@@ -61,6 +64,9 @@ function App(){
   async function toggleSender(id:string,status:string){await fetch(API+'/senders/'+id,{method:'PATCH',headers:headers(),body:JSON.stringify({status:status==='active'?'inactive':'active'})});load()}
   async function revoke(id:string){await fetch(API+'/api-keys/'+id,{method:'DELETE',headers:headers()});load()}
   async function requestDeposit(e:any){e.preventDefault();const r=await fetch(API+'/billing/deposits',{method:'POST',headers:headers(),body:JSON.stringify({amount:deposit,reference})});const d=await r.json();setMsg(r.ok?'Deposit request submitted':'Deposit request failed');if(r.ok){setDeposit('');setReference('');load()}}
+  async function createCampaign(e:any){e.preventDefault();setMsg('Creating campaign...');const r=await fetch(API+'/campaigns',{method:'POST',headers:headers(),body:JSON.stringify({senderId:campaign.senderId,body:campaign.body,recipients:campaign.recipients.split(/[,s]+/).filter(Boolean),groupIds:campaign.groupIds,scheduledAt:campaign.scheduledAt||undefined})});const d=await r.json();setMsg(r.ok?'Campaign accepted: '+d.recipients+' recipients':(d.message||'Campaign failed'));if(r.ok){setCampaign({...campaign,body:'',recipients:''});load()}}
+  async function campaignAction(id:string,action:string){await fetch(API+'/campaigns/'+id+'/'+action,{method:'POST',headers:headers()});load()}
+  async function importContacts(e:any){e.preventDefault();const r=await fetch(API+'/campaigns/contacts/import',{method:'POST',headers:headers(),body:JSON.stringify({fileName:'contacts.csv',csv:importCsv})});const d=await r.json();setMsg(r.ok?'Import queued: '+d.importId:(d.message||'Import failed'));if(r.ok){setImportCsv('');load()}}
   if(!logged)return <Login onLogin={()=>setLogged(true)}/>;
   return <div className="app"><header><div><h1>SMS Gateway</h1><span className="muted">InfoZillion SMS Platform</span></div><div className="account">{summary?.username??'Customer'} <span className="balance">Balance: ৳{summary?.balance??'—'}</span> <button onClick={logout}>Logout</button></div></header>
   <main>
