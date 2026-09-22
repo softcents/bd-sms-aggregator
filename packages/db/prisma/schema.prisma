@@ -2,7 +2,7 @@ datasource db { provider = "postgresql" url = env("DATABASE_URL") }
 generator client { provider = "prisma-client-js" }
 
 enum UserStatus { active suspended pending disabled }
-enum MessageStatus { pending queued sent delivered failed }
+enum MessageStatus { pending queued sending sent delivered failed }
 enum TransactionDirection { debit credit }
 
 model User {
