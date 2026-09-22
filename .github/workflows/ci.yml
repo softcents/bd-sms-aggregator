@@ -41,5 +41,8 @@ jobs:
       - name: Build Worker
         run: npm run build -w apps/worker
 
+      - name: Validate Prisma schema
+        run: npm run validate -w packages/db
+
       - name: Validate Docker Compose
         run: docker compose config
