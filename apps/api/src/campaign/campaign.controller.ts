@@ -4,6 +4,7 @@ import {ApiKeyGuard} from '../auth/api-key.guard';import {CampaignService} from 
 export class CampaignController{
  constructor(private readonly s:CampaignService){}
  @Get() campaigns(@Req() r:any){return this.s.campaigns(r.userId)}
+ @Post(':id/:action') control(@Req()r:any,@Param('id')id:string,@Param('action')action:string){return this.s.control(r.userId,id,action)}
  @Post() create(@Req() r:any,@Body() b:any){return this.s.createCampaign(r.userId,b)}
  @Get('contacts') contacts(@Req() r:any,@Query('limit')l?:string,@Query('offset')o?:string){return this.s.contacts(r.userId,Number(l||100),Number(o||0))}
  @Post('contacts') contact(@Req()r:any,@Body()b:any){return this.s.addContact(r.userId,b)}
