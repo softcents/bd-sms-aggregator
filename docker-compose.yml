@@ -60,6 +60,17 @@ services:
       rabbitmq: {condition: service_healthy}
     command: ["node","apps/worker/dist/main.js"]
 
+  importer:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    command: ["node","apps/worker/dist/import-worker.js"]
+
   campaign:
     build:
       context: .
