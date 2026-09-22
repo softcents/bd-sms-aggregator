@@ -28,12 +28,14 @@ function sqlValues(rows:any[],columns:number){
 export class SmsService {
  constructor(private readonly queue:QueueService,private readonly db:PostgresService){}
 
- async send(dto:SendSmsDto,userIdHeader?:string){
+ async send(dto:SendSmsDto,userIdHeader?:string,idempotencyKey?:string){
   if(!userIdHeader)throw new UnauthorizedException('x-user-id is required');
   const userId=BigInt(userIdHeader);
   if(!dto.to?.length)throw new BadRequestException('Recipient list is empty');
   const recipients=[...new Set(dto.to.map(normalizeMsisdn))];
   const batchExternal=crypto.randomUUID();
+  const idem=idempotencyKey?.trim()||null;
+  if(idem){const existing=await this.db.query('SELECT "externalId","totalRecipients" FROM "Batch" WHERE "userId"=$1 AND "idempotencyKey"=$2 LIMIT 1',[userId.toString(),idem]);if(existing.rowCount)return {status:'accepted',provider:'InfoZillion',batchId:existing.rows[0].externalId,recipients:existing.rows[0].totalRecipients,idempotent:true};}
   const unicode=dto.isUnicode??/[\u0080-\uFFFF]/u.test(dto.body);
   const messageParts=parts(dto.body,unicode);
   await this.db.tx(async c=>{
