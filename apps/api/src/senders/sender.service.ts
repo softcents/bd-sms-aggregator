@@ -1,1 +1,0 @@
-import { Injectable } from '@nestjs/common'; import { PostgresService } from '../db/postgres.service'; @Injectable() export class SenderService { constructor(private readonly db:PostgresService){} async list(userId:string){const q=await this.db.pool.query('SELECT id,"senderId",type,"billMsisdn",status FROM "Sender" WHERE "userId"=$1 ORDER BY id DESC',[userId]);return q.rows;}}

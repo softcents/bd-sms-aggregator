@@ -1,2 +1,0 @@
-ALTER TABLE "Batch" ADD COLUMN "scheduledAt" TIMESTAMPTZ, ADD COLUMN "startedAt" TIMESTAMPTZ, ADD COLUMN "completedAt" TIMESTAMPTZ, ADD COLUMN "pausedAt" TIMESTAMPTZ, ADD COLUMN "cancelledAt" TIMESTAMPTZ;
-CREATE INDEX "Batch_status_scheduledAt_idx" ON "Batch"("status","scheduledAt");

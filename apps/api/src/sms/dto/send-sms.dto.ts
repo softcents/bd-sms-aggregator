@@ -1,2 +1,0 @@
-import { IsArray, IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
-export class SendSmsDto { @IsString() senderId!: string; @IsArray() @IsString({each:true}) to!: string[]; @IsString() @MinLength(1) body!: string; @IsOptional() @IsBoolean() isUnicode?: boolean; }

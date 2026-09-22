@@ -1,1 +1,0 @@
-ALTER TABLE "ContactImport" ADD COLUMN "sourceData" TEXT;

@@ -1,2 +1,0 @@
-ALTER TABLE "Batch" ADD COLUMN IF NOT EXISTS "idempotencyKey" TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS "Batch_userId_idempotencyKey_key" ON "Batch" ("userId","idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;
