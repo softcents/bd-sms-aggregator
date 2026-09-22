@@ -88,6 +88,49 @@ async function sendToInfozillion(job: SmsJob) {
   }
 }
 
+
+async function refundFailedMessage(
+  messageId: bigint,
+  reason: string,
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
+    const message = await tx.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, externalId: true, userId: true, batchId: true, status: true, cost: true },
+    });
+
+    if (!message || message.status !== 'failed') return false;
+
+    const reference = `sms-refund:${message.externalId}`;
+    const existing = await tx.transaction.findUnique({ where: { reference } });
+    if (existing) return false;
+
+    const user = await tx.user.update({
+      where: { id: message.userId },
+      data: { balance: { increment: message.cost } },
+      select: { balance: true },
+    });
+
+    await tx.transaction.create({
+      data: {
+        userId: message.userId,
+        direction: 'credit',
+        amount: message.cost,
+        reference,
+        balance: user.balance,
+        meta: {
+          type: 'sms_refund',
+          messageId: message.externalId,
+          batchId: message.batchId?.toString() ?? null,
+          reason,
+        },
+      },
+    });
+
+    return true;
+  });
+}
+
 async function processMessage(message: ConsumeMessage): Promise<void> {
   const job = JSON.parse(message.content.toString()) as SmsJob;
   const id = BigInt(job.messageId);
@@ -97,7 +140,7 @@ async function processMessage(message: ConsumeMessage): Promise<void> {
   try {
     const report = await sendToInfozillion(job);
     const gatewayMessageId = String(report.serverTxnId || '');
-    const stored = await prisma.message.findUnique({ where: { id }, select: { batchId: true } });
+    const stored = await prisma.message.findUnique({ where: { id }, select: { batchId: true, externalId: true, userId: true, cost: true } });
 
     await prisma.message.update({
       where: { id },
@@ -132,6 +175,12 @@ async function processMessage(message: ConsumeMessage): Promise<void> {
         data: { failed: { increment: 1 }, queued: { decrement: 1 } },
       });
     }
+
+    // Provider rejection/timeout is billable only after successful acceptance.
+    // A failed send is refunded exactly once using a unique transaction reference.
+    await refundFailedMessage(id, reason).catch((refundError) => {
+      console.error('SMS refund error', id.toString(), refundError);
+    });
 
     channel.ack(message);
   }
@@ -232,6 +281,12 @@ async function pollDeliveryReports(): Promise<void> {
               : { failed: { increment: 1 } },
           });
         }
+
+        if (failed) {
+          await refundFailedMessage(item.id, reason || 'SMS delivery failed').catch((refundError) => {
+            console.error('DLR refund error', item.id.toString(), refundError);
+          });
+        }
       } else {
         const attempts = item.pollAttempts + 1;
         const maxAttempts = Number(process.env.DLR_MAX_ATTEMPTS || 20);
@@ -253,6 +308,9 @@ async function pollDeliveryReports(): Promise<void> {
           await prisma.batch.update({
             where: { id: current.batchId },
             data: { failed: { increment: 1 } },
+          });
+          await refundFailedMessage(item.id, 'DLR polling timeout').catch((refundError) => {
+            console.error('DLR timeout refund error', item.id.toString(), refundError);
           });
         }
       }
