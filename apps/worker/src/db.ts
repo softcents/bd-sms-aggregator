@@ -9,7 +9,7 @@ export async function claimForSending(externalId:string){
 export async function markSent(externalId:string,gatewayMessageId:string,report:any){
   const c=await db.connect();
   try{await c.query('BEGIN');
-    const q=await c.query('UPDATE "Message" SET status=\'sent\',"gatewayMessageId"=$1,"sentAt"=NOW(),"infozillionReport"=$2,"nextPollAt"=NOW(),"updatedAt"=NOW() WHERE "externalId"=$3 AND status=\'sending\' RETURNING "batchId"',[gatewayMessageId,JSON.stringify(report),externalId]);
+    const q=await c.query('UPDATE "Message" SET status=\'sent\',"gatewayMessageId"=$1,"sentAt"=NOW(),"infozillionReport"=$2,"nextPollAt"=NOW(),"dlrClaimedAt"=NULL,"updatedAt"=NOW() WHERE "externalId"=$3 AND status=\'sending\' RETURNING "batchId"',[gatewayMessageId,JSON.stringify(report),externalId]);
     if(q.rowCount&&q.rows[0].batchId) await completeBatchIfDone(c,q.rows[0].batchId);
     await c.query('COMMIT');
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
@@ -18,7 +18,7 @@ export async function markSent(externalId:string,gatewayMessageId:string,report:
 export async function markDelivered(externalId:string,report:any){
   const c=await db.connect();
   try{await c.query('BEGIN');
-    const q=await c.query('UPDATE "Message" SET status=\'delivered\',"deliveredAt"=NOW(),"infozillionReport"=$1,"nextPollAt"=NULL,"updatedAt"=NOW() WHERE "externalId"=$2 AND status NOT IN (\'failed\',\'delivered\') RETURNING "batchId"',[JSON.stringify(report),externalId]);
+    const q=await c.query('UPDATE "Message" SET status=\'delivered\',"deliveredAt"=NOW(),"infozillionReport"=$1,"nextPollAt"=NULL,"dlrClaimedAt"=NULL,"updatedAt"=NOW() WHERE "externalId"=$2 AND status NOT IN (\'failed\',\'delivered\') RETURNING "batchId"',[JSON.stringify(report),externalId]);
     if(q.rowCount&&q.rows[0].batchId) await completeBatchIfDone(c,q.rows[0].batchId);
     await c.query('COMMIT');
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
