@@ -1,0 +1,10 @@
+import { Counter, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+export const registry=new Registry();
+collectDefaultMetrics({register:registry});
+export const httpRequests=new Counter({name:'sms_api_http_requests_total',help:'HTTP requests',labelNames:['method','route','status'],registers:[registry]});
+export const smsAccepted=new Counter({name:'sms_api_sms_accepted_total',help:'Accepted SMS',registers:[registry]});
+export const providerSuccess=new Counter({name:'sms_provider_success_total',help:'Provider successes',registers:[registry]});
+export const providerFailure=new Counter({name:'sms_provider_failure_total',help:'Provider failures',registers:[registry]});
+export const dlrDelivered=new Counter({name:'sms_dlr_delivered_total',help:'DLR delivered',registers:[registry]});
+export const dlrFailed=new Counter({name:'sms_dlr_failed_total',help:'DLR failed',registers:[registry]});
+export const apiLatency=new Histogram({name:'sms_api_request_duration_seconds',help:'API request duration',labelNames:['method','route'],registers:[registry]});
