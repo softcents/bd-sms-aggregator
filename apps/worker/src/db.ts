@@ -3,7 +3,7 @@ export const db=new Pool({connectionString:process.env.DATABASE_URL,max:Number(p
 
 export async function claimForSending(externalId:string){
   const q=await db.query('UPDATE "Message" SET status=\'sending\',"updatedAt"=NOW() WHERE "externalId"=$1 AND status IN (\'queued\',\'pending\') RETURNING id,"externalId",status',[externalId]);
-  return q.rowCount>0;
+  return (q.rowCount ?? 0) > 0;
 }
 
 export async function markSent(externalId:string,gatewayMessageId:string,report:any){
