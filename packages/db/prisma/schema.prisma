@@ -26,6 +26,7 @@ model User {
   contacts Contact[]
   contactGroups ContactGroup[]
   templates SmsTemplate[]
+  imports ContactImport[]
   @@index([status])
 }
 
@@ -294,6 +295,7 @@ model ContactGroup {
   updatedAt DateTime @updatedAt
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   members ContactGroupMember[]
+  imports ContactImport[]
   @@unique([userId,name])
 }
 model ContactGroupMember {
@@ -314,4 +316,23 @@ model SmsTemplate {
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   @@unique([userId,name])
   @@index([userId])
+}
+
+model ContactImport {
+  id BigInt @id @default(autoincrement())
+  externalId String @unique
+  userId BigInt
+  fileName String?
+  status String @default("processing")
+  totalRows Int @default(0)
+  importedRows Int @default(0)
+  skippedRows Int @default(0)
+  errorRows Int @default(0)
+  groupId BigInt?
+  errorReport Json?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  group ContactGroup? @relation(fields:[groupId],references:[id],onDelete:SetNull)
+  @@index([userId,createdAt])
 }
