@@ -200,6 +200,11 @@ model Batch {
   invalidCount Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  scheduledAt DateTime?
+  startedAt DateTime?
+  completedAt DateTime?
+  pausedAt DateTime?
+  cancelledAt DateTime?
   user User @relation(fields:[userId],references:[id])
   sender Sender? @relation(fields:[senderId],references:[id])
   messages Message[]
