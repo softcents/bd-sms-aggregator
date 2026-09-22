@@ -337,6 +337,7 @@ model ContactImport {
   errorRows Int @default(0)
   groupId BigInt?
   errorReport Json?
+  sourceData String? @db.Text
   createdAt DateTime @default(now())
   completedAt DateTime?
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
