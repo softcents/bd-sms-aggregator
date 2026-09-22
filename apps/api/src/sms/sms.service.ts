@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, Decimal } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { QueueService } from '../queue/queue.service';
 import { TariffsService } from '../tariffs/tariffs.service';
@@ -55,10 +55,10 @@ export class SmsService {
       }),
     );
 
-    const totalCost = pricing.reduce((sum, item) => sum.add(item.cost), new Prisma.Decimal(0));
+    const totalCost = pricing.reduce((sum, item) => sum.add(item.cost), new Decimal(0));
 
     let created = false;
-    let result: Prisma.BatchGetPayload<{}>;
+    let result: Awaited<ReturnType<PrismaService['batch']['findFirstOrThrow']>>;
 
     try {
       result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -123,7 +123,7 @@ export class SmsService {
         return batch;
       }, { isolationLevel: 'ReadCommitted' });
     } catch (error) {
-      if (input.idempotencyKey && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (input.idempotencyKey && typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'P2002') {
         result = await this.prisma.batch.findFirstOrThrow({
           where: { userId, idempotencyKey: input.idempotencyKey },
         });
@@ -156,7 +156,7 @@ export class SmsService {
       status: result.status,
       total: result.total,
       totalCost: result.totalCost.toString(),
-      messageIds: messages.map((item) => item.externalId),
+      messageIds: messages.map((item: { externalId: string }) => item.externalId),
     };
   }
 
