@@ -1,1 +1,1 @@
-import { Module } from '@nestjs/common'; import { BillingService } from './billing.service'; @Module({providers:[BillingService],exports:[BillingService]}) export class BillingModule {}
+import { Module } from '@nestjs/common'; import { BillingService } from './billing.service'; import { TransactionController } from './transaction.controller'; import { DepositController } from './deposit.controller'; @Module({controllers:[TransactionController,DepositController],providers:[BillingService]}) export class BillingModule {}
