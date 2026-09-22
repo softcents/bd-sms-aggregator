@@ -1,0 +1,4 @@
+import { Injectable } from '@nestjs/common'; import { PrismaClient } from '@prisma/client';
+@Injectable() export class RoutingService { private db=new PrismaClient();
+ async resolve(userId:bigint, senderId?:bigint, trafficType='sms'){const assignment=await this.db.tariffPlanAssignment.findFirst({where:{userId},orderBy:{effectiveFrom:'desc'},include:{tariffPlan:{include:{rates:{include:{operator:true}}}}}});const route=await this.db.routePlan.findFirst({where:{enabled:true,OR:[{isDefault:true},{rules:{some:{enabled:true}}}]},orderBy:{id:'asc'},include:{gateways:{where:{active:true},orderBy:{priority:'asc'},include:{gateway:true}}}});return {tariffPlan:assignment?.tariffPlan??null,route,trafficType,senderId};}
+}
