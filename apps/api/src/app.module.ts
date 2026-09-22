@@ -7,9 +7,10 @@ import { QueueModule } from './queue/queue.module';
 import { SmsModule } from './sms/sms.module';
 import { SendersModule } from './senders/senders.module';
 import { BillingModule } from './billing/billing.module';
+import { TariffsModule } from './tariffs/tariffs.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, QueueModule, SmsModule, SendersModule, BillingModule],
+  imports: [DatabaseModule, AuthModule, QueueModule, SmsModule, SendersModule, BillingModule, TariffsModule],
   controllers: [HealthController, AuthController],
 })
 export class AppModule {}
