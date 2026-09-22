@@ -1,1 +1,1 @@
-import { Global, Module } from '@nestjs/common'; import { ApiKeyGuard } from './api-key.guard'; @Global() @Module({providers:[ApiKeyGuard],exports:[ApiKeyGuard]}) export class AuthModule {}
+import { Global, Module } from '@nestjs/common'; import { ApiKeyGuard } from './api-key.guard'; import { AuthController } from './auth.controller'; @Global() @Module({controllers:[AuthController],providers:[ApiKeyGuard],exports:[ApiKeyGuard]}) export class AuthModule {}
