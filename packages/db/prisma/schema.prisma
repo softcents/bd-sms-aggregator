@@ -185,6 +185,7 @@ model OutboxEvent {
   lastError String?
   createdAt DateTime @default(now())
   @@index([publishedAt,availableAt])
+  @@index([availableAt,id])
 }
 
 model Batch {
@@ -247,6 +248,9 @@ model Message {
   sender Sender? @relation(fields:[senderId],references:[id])
   gateway Gateway? @relation(fields:[gatewayId],references:[id])
   @@index([userId,status,createdAt])
+  @@index([batchId,status,id])
+  @@index([status,id])
+  @@index([userId,createdAt,id])
   @@index([gatewayMessageId])
   @@index([nextPollAt])
   @@index([dlrClaimedAt,status])
