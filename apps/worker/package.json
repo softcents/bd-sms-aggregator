@@ -1,0 +1,1 @@
+{"name":"sms-worker","private":true,"scripts":{"build":"tsc -p tsconfig.json"},"dependencies":{"amqp-connection-manager":"^5.0.0","amqplib":"^0.10.9","dotenv":"^17.2.2"},"devDependencies":{"@types/node":"^24.5.2","typescript":"^5.9.2"}}
