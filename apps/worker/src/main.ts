@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import amqp from 'amqp-connection-manager';
+import amqp, { ChannelWrapper } from 'amqp-connection-manager';
 import { claimForSending, markSent, markFailedAndRefund, resetForRetry } from './db';
 import { startMetricsServer, jobsProcessed, providerRequests, activeJobs, rabbitConnected } from './metrics';
 
@@ -24,7 +24,7 @@ async function main(){
  const conn=amqp.connect([process.env.RABBITMQ_URL||'amqp://sms:sms@rabbitmq:5672'],{heartbeatIntervalInSeconds:10,reconnectTimeInSeconds:5});
  conn.on('connect',()=>rabbitConnected.set(1));
  conn.on('disconnect',()=>rabbitConnected.set(0));
- const ch=conn.createChannel({json:false,setup:async channel=>{
+ const ch=conn.createChannel({json:false,setup:async (channel)=>{
   await channel.assertExchange('sms','topic',{durable:true});
   await channel.assertExchange('sms.dlx','topic',{durable:true});
   await channel.assertQueue('sms.infozillion',{durable:true,deadLetterExchange:'sms.dlx'});
