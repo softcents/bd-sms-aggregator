@@ -185,6 +185,7 @@ model OutboxEvent {
 
 model Batch {
   id BigInt @id @default(autoincrement())
+  externalId String @unique
   userId BigInt
   senderId BigInt?
   body String
