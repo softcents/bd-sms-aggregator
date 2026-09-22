@@ -1,1 +1,17 @@
-import { Module } from '@nestjs/common'; import { ConfigModule } from '@nestjs/config'; import { SmsModule } from './sms/sms.module'; import { InfozillionModule } from './infozillion/infozillion.module'; import { QueueModule } from './queue/queue.module'; import { AuthModule } from './auth/auth.module'; import { HealthModule } from './health/health.module'; import { BillingModule } from './billing/billing.module'; import { RoutingModule } from './routing/routing.module'; import { PostgresModule } from './db/postgres.module'; import { ReportsModule } from './reports/reports.module'; import { SecurityModule } from './security/security.module'; import { SenderModule } from './senders/sender.module'; @Module({imports:[ConfigModule.forRoot({isGlobal:true}),SecurityModule,SenderModule,AuthModule,QueueModule,InfozillionModule,HealthModule,BillingModule,RoutingModule,PostgresModule,ReportsModule,SmsModule]}) export class AppModule {}
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { SmsModule } from './sms/sms.module';
+import { InfozillionModule } from './infozillion/infozillion.module';
+import { QueueModule } from './queue/queue.module';
+import { AuthModule } from './auth/auth.module';
+import { HealthModule } from './health/health.module';
+import { BillingModule } from './billing/billing.module';
+import { RoutingModule } from './routing/routing.module';
+import { PostgresModule } from './db/postgres.module';
+import { ReportsModule } from './reports/reports.module';
+import { SecurityModule } from './security/security.module';
+import { SenderModule } from './senders/sender.module';
+import { AdminModule } from './admin/admin.module';
+
+@Module({imports:[ConfigModule.forRoot({isGlobal:true}),SecurityModule,SenderModule,AuthModule,AdminModule,QueueModule,InfozillionModule,HealthModule,BillingModule,RoutingModule,PostgresModule,ReportsModule,SmsModule]})
+export class AppModule {}
