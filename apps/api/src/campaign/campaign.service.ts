@@ -7,7 +7,7 @@ function norm(v:string){const d=String(v).replace(/\\D/g,'');return d.startsWith
 function parts(body:string,u:boolean){const n=Array.from(body).length;return u?(n<=70?1:Math.ceil(n/67)):(n<=160?1:Math.ceil(n/153))}
 @Injectable()
 export class CampaignService{
- constructor(private readonly db:PostgresService){}
+ constructor(private readonly db:PostgresService,private readonly queue:any){}
  async contacts(uid:string,limit=100,offset=0){const q=await this.db.pool.query('SELECT id,name,phone,email,group_name as "groupName",metadata,"createdAt" FROM "Contact" WHERE "userId"=$1 ORDER BY id DESC LIMIT $2 OFFSET $3',[uid,Math.min(limit,500),Math.max(offset,0)]);return q.rows}
  async addContact(uid:string,b:any){const phone=norm(String(b.phone||''));if(phone.length<11)throw new BadRequestException('Invalid phone');try{const q=await this.db.pool.query('INSERT INTO "Contact" ("userId",name,phone,email,group_name,metadata,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW()) RETURNING *',[uid,String(b.name||''),phone,b.email||null,b.groupName||null,JSON.stringify(b.metadata||{})]);return q.rows[0]}catch(e:any){if(e.code==='23505')throw new BadRequestException('Contact already exists');throw e}}
  async groups(uid:string){const q=await this.db.pool.query('SELECT g.id,g.name,g.description,COUNT(gc."contactId")::int "contactCount" FROM "ContactGroup" g LEFT JOIN "ContactGroupMember" gc ON gc."groupId"=g.id WHERE g."userId"=$1 GROUP BY g.id ORDER BY g.id DESC',[uid]);return q.rows}
@@ -25,25 +25,47 @@ export class CampaignService{
  async templates(uid:string){return (await this.db.pool.query('SELECT * FROM "SmsTemplate" WHERE "userId"=$1 ORDER BY id DESC',[uid])).rows}
  async createTemplate(uid:string,b:any){if(!b.name||!b.body)throw new BadRequestException('name and body required');return (await this.db.pool.query('INSERT INTO "SmsTemplate" ("userId",name,body,"createdAt","updatedAt") VALUES ($1,$2,$3,NOW(),NOW()) RETURNING *',[uid,String(b.name),String(b.body)])).rows[0]}
  async createCampaign(uid:string,b:any){
-   const senderId=String(b.senderId||'');const body=String(b.body||'');if(!senderId||!body)throw new BadRequestException('senderId and body required');
+   const senderId=String(b.senderId||''),body=String(b.body||'');
+   if(!senderId||!body)throw new BadRequestException('senderId and body required');
    let recipients:string[]=(Array.isArray(b.recipients)?b.recipients:[]).map(norm);
-   if(Array.isArray(b.groupIds)&&b.groupIds.length){const q=await this.db.pool.query('SELECT DISTINCT c.phone FROM "Contact" c JOIN "ContactGroupMember" gm ON gm."contactId"=c.id JOIN "ContactGroup" g ON g.id=gm."groupId" WHERE c."userId"=$1 AND g."userId"=$1 AND g.id=ANY($2::bigint[])',[uid,b.groupIds.map(String)]);recipients.push(...q.rows.map(x=>x.phone))}
-   recipients=[...new Set(recipients.filter(x=>x.length>=11))];if(!recipients.length)throw new BadRequestException('No recipients');
-   const unicode=b.isUnicode??/[^\\x00-\\x7F]/.test(body);const p=parts(body,unicode);const scheduledAt=b.scheduledAt?new Date(b.scheduledAt):new Date();if(Number.isNaN(scheduledAt.getTime()))throw new BadRequestException('Invalid scheduledAt');
-   const c=await this.db.pool.connect();const ext=crypto.randomUUID();
-   try{await c.query('BEGIN');const s=await c.query('SELECT id,"senderId",type,"billMsisdn" FROM "Sender" WHERE "userId"=$1 AND "senderId"=$2 AND status=\'active\'',[uid,senderId]);if(!s.rowCount)throw new BadRequestException('Sender not found');
-   const batch=await c.query('INSERT INTO "Batch" ("externalId","userId","senderId",body,status,"totalRecipients","validCount","createdAt","updatedAt") VALUES ($1,$2,$3,$4,\'queued\',$5,$5,NOW(),NOW()) RETURNING id',[ext,uid,s.rows[0].id,body,recipients.length]);
-   let total=new Decimal(0);const jobs:any[]=[];
-   for(const to of recipients){const op=await c.query('SELECT o.id FROM "OperatorPrefix" p JOIN "Operator" o ON o.id=p."operatorId" WHERE p.enabled AND o.enabled AND $1 LIKE p.prefix||\'%\' ORDER BY length(p.prefix) DESC LIMIT 1',[to]);if(!op.rowCount)continue;
-     const rate=await c.query('SELECT tr."maskingPrice",tr."nonMaskingPrice" FROM "TariffRate" tr JOIN "TariffPlanAssignment" a ON a."tariffPlanId"=tr."tariffPlanId" WHERE a."userId"=$1 AND tr."operatorId"=$2 AND tr."effectiveFrom"<=NOW() ORDER BY a."effectiveFrom" DESC,tr."effectiveFrom" DESC LIMIT 1',[uid,op.rows[0].id]);if(!rate.rowCount)continue;
-     const masking=['masking','alphanumeric','numeric'].includes(String(s.rows[0].type||'').toLowerCase());const unit=masking?rate.rows[0].maskingPrice:rate.rows[0].nonMaskingPrice;const cost=new Decimal(String(unit)).mul(p);total=total.add(cost);const id=crypto.randomUUID();
-     await c.query('INSERT INTO "Message" ("externalId","userId","batchId","senderId",to,body,status,source,"isUnicode",parts,rate,cost,"createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,\'queued\',\'campaign\',$7,$8,$9,$10,NOW(),NOW())',[id,uid,batch.rows[0].id,s.rows[0].id,to,body,unicode,p,unit,cost.toFixed(6)]);
-     jobs.push({id:crypto.randomUUID(),messageId:id,batchId:String(batch.rows[0].id),provider:'InfoZillion',senderId, senderType:s.rows[0].type,billMsisdn:s.rows[0].billMsisdn||null,to:[to],body,isUnicode:unicode,isLongSMS:p>1});
-     await c.query('INSERT INTO "OutboxEvent" ("aggregateType","aggregateId","eventType",payload,"createdAt") VALUES (\'message\',$1,\'sms.infozillion\',$2,NOW())',[id,JSON.stringify(jobs.at(-1)),scheduledAt]);
+   if(Array.isArray(b.groupIds)&&b.groupIds.length){
+     const q=await this.db.pool.query('SELECT DISTINCT c.phone FROM "Contact" c JOIN "ContactGroupMember" gm ON gm."contactId"=c.id JOIN "ContactGroup" g ON g.id=gm."groupId" WHERE c."userId"=$1 AND g."userId"=$1 AND g.id=ANY($2::bigint[])',[uid,b.groupIds.map(String)]);
+     recipients.push(...q.rows.map(x=>x.phone));
    }
-   if(!jobs.length)throw new BadRequestException('No valid recipients with tariff mapping');
-   const u=await c.query('SELECT balance FROM "User" WHERE id=$1 FOR UPDATE',[uid]);const before=new Decimal(String(u.rows[0].balance));if(before.lt(total))throw new BadRequestException('Insufficient balance');const after=before.sub(total);await c.query('UPDATE "User" SET balance=$1,"updatedAt"=NOW() WHERE id=$2',[after.toFixed(6),uid]);await c.query('INSERT INTO "Transaction" ("userId",amount,direction,"balanceBefore","balanceAfter",description,"createdAt") VALUES ($1,$2,\'debit\',$3,$4,$5,NOW())',[uid,total.toFixed(6),before.toFixed(6),after.toFixed(6),'Campaign '+ext]);await c.query('UPDATE "Batch" SET "validCount"=$1,"totalRecipients"=$1 WHERE id=$2',[jobs.length,batch.rows[0].id]);await c.query('COMMIT');return {status:'accepted',campaignId:ext,batchId:ext,recipients:jobs.length,totalCost:total.toFixed(6)}}
-   catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
+   recipients=[...new Set(recipients.filter(x=>x.length>=11))];
+   if(!recipients.length)throw new BadRequestException('No recipients');
+   const unicode=b.isUnicode??/[^\x00-\x7F]/.test(body), p=parts(body,unicode);
+   const scheduledAt=b.scheduledAt?new Date(b.scheduledAt):new Date();
+   if(Number.isNaN(scheduledAt.getTime()))throw new BadRequestException('Invalid scheduledAt');
+   const sender=await this.db.pool.query('SELECT id,"senderId",type,"billMsisdn" FROM "Sender" WHERE "userId"=$1 AND "senderId"=$2 AND status=\'active\'',[uid,senderId]);
+   if(!sender.rowCount)throw new BadRequestException('Sender not found');
+   const batch=(await this.db.pool.query('INSERT INTO "Batch" ("externalId","userId","senderId",body,status,"totalRecipients","validCount","scheduledAt","createdAt","updatedAt") VALUES (gen_random_uuid(),$1,$2,$3,\'planning\',$4,0,$5,NOW(),NOW()) RETURNING id,"externalId"',[uid,sender.rows[0].id,body,recipients.length,scheduledAt])).rows[0];
+   let total=new Decimal(0),valid=0;
+   const masking=['masking','alphanumeric','numeric'].includes(String(sender.rows[0].type||'').toLowerCase());
+   try{
+     for(let start=0;start<recipients.length;start+=1000){
+       const chunk=recipients.slice(start,start+1000);
+       const q=await this.db.pool.query(`INSERT INTO "CampaignRecipient" ("batchId",phone,"operatorId",rate,cost,parts,status,"createdAt","updatedAt")
+         SELECT $1,x.phone,op.id,rt.unit,rt.unit*$2,$3,'pending',NOW(),NOW()
+         FROM unnest($4::text[]) x(phone)
+         JOIN LATERAL (SELECT o.id FROM "OperatorPrefix" p JOIN "Operator" o ON o.id=p."operatorId" WHERE p.enabled AND o.enabled AND x.phone LIKE p.prefix||'%' ORDER BY length(p.prefix) DESC LIMIT 1) op ON true
+         JOIN LATERAL (SELECT CASE WHEN $5::boolean THEN tr."maskingPrice" ELSE tr."nonMaskingPrice" END AS unit
+           FROM "TariffRate" tr JOIN "TariffPlanAssignment" a ON a."tariffPlanId"=tr."tariffPlanId"
+           WHERE a."userId"=$6 AND tr."operatorId"=op.id AND tr."effectiveFrom"<=NOW()
+           ORDER BY a."effectiveFrom" DESC,tr."effectiveFrom" DESC LIMIT 1) rt ON true
+         ON CONFLICT ("batchId",phone) DO NOTHING RETURNING cost`,[batch.id,p,p,chunk,masking,uid]);
+       for(const row of q.rows){total=total.add(String(row.cost));valid++;}
+     }
+     if(!valid)throw new BadRequestException('No valid recipients with tariff mapping');
+     const u=await this.db.pool.query('SELECT balance FROM "User" WHERE id=$1 FOR UPDATE',[uid]);
+     const before=new Decimal(String(u.rows[0].balance));if(before.lt(total))throw new BadRequestException('Insufficient balance');
+     const after=before.sub(total);
+     await this.db.pool.query('UPDATE "User" SET balance=$1,"updatedAt"=NOW() WHERE id=$2',[after.toFixed(6),uid]);
+     await this.db.pool.query('INSERT INTO "Transaction" ("userId",amount,direction,"balanceBefore","balanceAfter",description,"createdAt") VALUES ($1,$2,\'debit\',$3,$4,$5,NOW())',[uid,total.toFixed(6),before.toFixed(6),after.toFixed(6),'Campaign '+batch.externalId]);
+     await this.db.pool.query('UPDATE "Batch" SET status=\'queued\',"validCount"=$1,"invalidCount"=$2,"totalRecipients"=$3,"updatedAt"=NOW() WHERE id=$4',[valid,recipients.length-valid,recipients.length,batch.id]);
+     await this.queue.publishCampaign(String(batch.id));
+     return {status:'accepted',campaignId:batch.externalId,batchId:batch.externalId,recipients:valid,totalCost:total.toFixed(6),chunkSize:1000};
+   }catch(e){await this.db.pool.query('UPDATE "Batch" SET status=\'cancelled\',"cancelledAt"=NOW(),"updatedAt"=NOW() WHERE id=$1 AND status=\'planning\'',[batch.id]);throw e}
  }
  async control(uid:string,id:string,action:string){
    const c=await this.db.pool.connect();
