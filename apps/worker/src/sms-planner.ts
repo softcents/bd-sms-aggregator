@@ -34,7 +34,7 @@ async function plan(batchExternalId:string){
 }
 async function main(){
  const conn=amqp.connect([process.env.RABBITMQ_URL||'amqp://sms:sms@rabbitmq:5672'],{heartbeatIntervalInSeconds:10,reconnectTimeInSeconds:5});
- const ch=conn.createChannel({json:true,setup:async channel=>{await channel.assertExchange('sms','topic',{durable:true});await channel.assertQueue('sms.plan',{durable:true});await channel.bindQueue('sms.plan','sms','sms.plan');await channel.prefetch(Number(process.env.SMS_PLAN_PREFETCH||2));}});
+ const ch=conn.createChannel({json:true,setup:async (channel)=>{await channel.assertExchange('sms','topic',{durable:true});await channel.assertQueue('sms.plan',{durable:true});await channel.bindQueue('sms.plan','sms','sms.plan');await channel.prefetch(Number(process.env.SMS_PLAN_PREFETCH||2));}});
  await ch.waitForConnect();console.log('SMS planner ready');
  await ch.consume('sms.plan',async m=>{if(!m)return;try{const j=JSON.parse(m.content.toString());const more=await plan(String(j.batchId));if(more)await ch.publish('sms','sms.plan',j,{persistent:true});await ch.ack(m)}catch(e){console.error('SMS planner failed',e);await ch.nack(m,false,true)}});
 }
